@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendario de Técnicos (Firebase v9)</title>
+    <style>
+        :root {
+            --font-main: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            --transition-speed: 0.3s;
+        }
+        [data-theme="dark"] {
+            --bg-primary: #1a1b26; --bg-secondary: #24283b; --bg-tertiary: #414868;
+            --text-primary: #c0caf5; --text-secondary: #a9b1d6; --accent: #7dcfff;
+            --accent-glow: rgba(125, 207, 255, 0.3); --border-color: #3b3f51;
+            --success: #9ece6a; --pending: #e0af68; --danger: #f7768e; --in-progress: #7aa2f7;
+            --modal-bg: rgba(36, 40, 59, 0.85);
+            --shadow-color: rgba(0,0,0,0.4);
+        }
+        [data-theme="light"] {
+            --bg-primary: #f0f2f5; --bg-secondary: #ffffff; --bg-tertiary: #e9ecef;
+            --text-primary: #212529; --text-secondary: #495057; --accent: #007bff;
+            --accent-glow: rgba(0, 123, 255, 0.2); --border-color: #dee2e6;
+            --success: #28a745; --pending: #ffc107; --danger: #dc3545; --in-progress: #17a2b8;
+            --modal-bg: rgba(255, 255, 255, 0.85);
+            --shadow-color: rgba(0,0,0,0.1);
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            font-family: var(--font-main); margin: 0;
+            background-color: var(--bg-primary); color: var(--text-primary);
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+        }
+        .container { max-width: 98%; margin: 0 auto; padding: 1rem; }
+        .header-controls {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.8rem 1.2rem; background-color: var(--bg-secondary);
+            border-radius: 12px; margin-bottom: 1rem; border: 1px solid var(--border-color);
+        }
+        .header-controls h1 { margin: 0; font-size: 1.3rem; color: var(--text-primary); font-weight: 600; }
+        .icon-btn {
+            background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-secondary);
+            padding: 0.4rem 0.8rem; border-radius: 8px; cursor: pointer; display: flex;
+            align-items: center; gap: 0.5rem; font-weight: 600; transition: all var(--transition-speed);
+        }
+        .icon-btn:hover, .icon-btn.active { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); }
+        .card { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; }
+
+        .calendar-controls { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        #date-picker { padding: 0.4rem; background-color: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 8px; }
+        [data-theme="dark"] #date-picker { color-scheme: dark; }
+
+        #filter-controls { text-align: center; margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem; }
+        #filter-options { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin-top: 1rem; }
+        .filter-checkbox { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+        .filter-checkbox input { accent-color: var(--accent); }
+        #search-service-input {
+            width: auto; min-width: 200px; padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem;
+            background: var(--bg-tertiary); color: var(--text-primary);
+        }
+        #search-input:focus {
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .search-action-buttons { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+
+        #daily-view-container .calendar-scroll-container {
+            display: flex; overflow: auto; background-color: var(--bg-secondary);
+            border-radius: 12px; border: 1px solid var(--border-color); position: relative; max-height: 75vh;
+        }
+        .time-axis {
+            min-width: 80px; max-width: 80px; flex-shrink: 0; font-size: 0.75rem; color: var(--text-secondary);
+            border-right: 1px solid var(--border-color); display: flex; flex-direction: column;
+            position: sticky; left: 0; z-index: 35; background-color: var(--bg-secondary);
+        }
+        .time-axis-header {
+            display: flex; align-items: center; justify-content: center; padding: 0.6rem;
+            border-bottom: 2px solid var(--accent); font-weight: 600; font-size: 0.8rem;
+            color: var(--text-primary); position: sticky; top: 0; z-index: 36;
+            background-color: var(--bg-secondary); height: 53px;
+        }
+        .time-slot { height: 50px; border-bottom: 1px solid var(--border-color); box-sizing: border-box; }
+        .time-axis .time-slot { padding-right: 8px; text-align: right; user-select: none; }
+        .time-axis .time-slot span { position: relative; top: -0.6em; background-color: var(--bg-secondary); padding: 0 4px; }
+        .calendar-content { display: flex; flex-direction: column; flex-grow: 1; }
+        .technician-headers-container { display: flex; position: sticky; top: 0; z-index: 30; background-color: var(--bg-secondary); }
+        .technician-header {
+            flex: 1 1 200px; min-width: 200px; text-align: center; padding: 0.6rem;
+            border-bottom: 2px solid var(--accent); font-weight: 600; color: var(--text-primary);
+            border-right: 1px solid var(--border-color); font-size: 0.8rem;
+        }
+        a.req-link {
+            color: var(--text-primary); text-decoration: none;
+            transition: color var(--transition-speed);
+        }
+        a.req-link:hover { color: var(--accent); text-decoration: underline; }
+        .technician-columns-container { display: flex; flex-grow: 1; position: relative; }
+        .technician-column { flex: 1 1 200px; min-width: 200px; border-right: 1px solid var(--border-color); position: relative; }
+        .current-time-indicator { position: absolute; left: 80px; right: 0; height: 2px; background-color: var(--danger); z-index: 25; pointer-events: none; }
+        .current-time-indicator::before {
+            content: ''; position: absolute; left: -5px; top: 50%; transform: translateY(-50%);
+            width: 10px; height: 10px; border-radius: 50%; background-color: var(--danger); border: 2px solid var(--bg-secondary);
+        }
+        .event-block, .travel-block {
+            position: absolute; right: 5%; border-radius: 4px; padding: 0.2rem 0.5rem;
+            cursor: pointer; overflow: hidden; transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 5px var(--shadow-color); font-size: 0.8rem;
+        }
+        .event-block:hover, .travel-block:hover { transform: translateY(-2px); z-index: 50 !important; box-shadow: 0 6px 15px var(--shadow-color); }
+        .event-block { color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.3); z-index: 20; }
+        .event-block strong { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; }
+        .event-block span { opacity: 0.9; font-size: 0.75rem;}
+        .travel-block { z-index: 19; color: var(--text-primary); }
+        .event-block.status-Confirmado { background-color: var(--success); }
+        .event-block.status-Pendiente { background-color: var(--pending); }
+        .event-block.status-Esperando-Repuestos { background-color: var(--in-progress); }
+        .event-block.status-Otros { background-color: var(--bg-tertiary); color: var(--text-primary); }
+        .travel-block.status-Confirmado { background-color: rgba(158, 206, 106, 0.3); }
+        .travel-block.status-Pendiente { background-color: rgba(224, 175, 104, 0.3); }
+        .travel-block.status-Esperando-Repuestos { background-color: rgba(122, 162, 247, 0.3); }
+        .travel-block.status-Otros { background-color: rgba(65, 72, 104, 0.3); }
+        
+        .week-grid-container {
+            display: grid; grid-template-columns: 150px repeat(7, 1fr);
+            border: 1px solid var(--border-color); border-radius: 12px;
+            overflow: auto; background-color: var(--bg-secondary);
+            max-height: 75vh;
+        }
+        .week-grid-header, .week-grid-tech-cell, .week-grid-day-cell {
+            padding: 0.6rem; border-right: 1.5px solid var(--border-color);
+            border-bottom: 1.5px solid var(--border-color);
+        }
+        .week-grid-header {
+            text-align: center; font-weight: 600; color: var(--text-primary);
+            background-color: var(--bg-tertiary);
+            position: sticky; top: 0; z-index: 10;
+        }
+        .week-grid-tech-cell {
+            font-weight: 600; color: var(--text-primary);
+            background-color: var(--bg-tertiary);
+            position: sticky; left: 0; z-index: 5;
+        }
+        .week-grid-day-cell { min-height: 100px; padding: 0.5rem; min-width: 0; }
+        .week-event-item {
+            border-left: 5px solid var(--text-secondary); padding: 0.4rem 0.6rem;
+            border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.75rem;
+            cursor: pointer; box-shadow: 0 1px 3px var(--shadow-color);
+            transition: transform 0.2s, box-shadow 0.2s; background-color: var(--bg-tertiary);
+        }
+        .week-event-item:hover { transform: translateY(-2px); box-shadow: 0 4px 8px var(--shadow-color); }
+        .week-event-item strong {
+            display: block; font-weight: 600; color: var(--text-primary);
+            font-size: 0.8rem; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .week-event-item span { display: block; color: var(--text-secondary); margin-top: 0.2rem; }
+        .week-event-item.status-Confirmado { border-left-color: var(--success); }
+        .week-event-item.status-Pendiente { border-left-color: var(--pending); }
+        .week-event-item.status-Esperando-Repuestos { border-left-color: var(--in-progress); }
+
+        .modal-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: var(--modal-bg); display: flex; justify-content: center; align-items: center; 
+            z-index: 1000; opacity: 0; visibility: hidden; 
+            transition: opacity var(--transition-speed); overflow-y: auto;
+        }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-container { 
+            background: var(--bg-secondary); border: 1px solid var(--border-color); 
+            border-radius: 16px; width: 90%; max-width: 800px; 
+            max-height: 90vh; padding: 2rem; 
+            transform: scale(0.9); transition: transform var(--transition-speed); 
+            overflow-y: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .modal-overlay.visible .modal-container { transform: scale(1); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        .modal-header h2 { margin: 0; color: var(--accent); }
+        .modal-close-btn { background: none; border: none; font-size: 1.5rem; color: var(--text-secondary); cursor: pointer; padding: 0; }
+        .modal-content .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.25rem; }
+        .modal-content .detail-item strong { display: block; color: var(--text-secondary); margin-bottom: 0.25rem; font-size: 0.875rem; text-transform: uppercase; }
+        .modal-content .detail-item span { color: var(--text-primary); font-size: 1rem; }
+        .modal-content .full-width { grid-column: 1 / -1; }
+    </style>
+</head>
+<body>
+    <div id="login-container" style="display: flex; align-items: center; justify-content: center; height: 100vh; padding: 1.5rem;">
+        <div class="card" style="max-width: 450px; width: 100%;"><h2>Acceso de Planificador</h2><form id="login-form"><label for="email">Correo Electrónico</label><input type="email" id="email" required><label for="password" style="margin-top:1rem;">Contraseña</label><input type="password" id="password" required><button type="submit" style="margin-top: 1rem;">Acceder</button></form></div>
+    </div>
+    <div id="main-content" style="display: none;">
+        <div class="container">
+             <div class="header-controls">
+                <h1 id="header-title">Calendario de Técnicos</h1>
+                <div>
+                     <button id="view-day-btn" class="icon-btn active">Día</button>
+                     <button id="view-week-btn" class="icon-btn">Semana</button>
+                     <button id="logout-button" class="icon-btn" style="margin-left: 1rem;">Cerrar Sesión</button>
+                </div>
+             </div>
+            <div class="card">
+                <div class="calendar-controls">
+                    <button id="prev-btn" class="icon-btn">‹ Anterior</button>
+                    <button id="today-btn" class="icon-btn">Hoy</button>
+                    <div><label for="date-picker">Seleccionar Fecha</label><input type="date" id="date-picker"></div>
+                    <button id="next-btn" class="icon-btn">Siguiente ›</button>
+                </div>
+                <h3 id="current-date-display" style="text-align:center; margin:0; font-size: 1.25rem; font-weight: 600; color: var(--accent);"></h3>
+                <div id="filter-controls" style="text-align: center; margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                    <button id="toggle-filter-btn" class="icon-btn">Filtro por Zona</button>
+                    <div id="filter-options" style="display: none;"></div>
+                    <div style="text-align: center; margin-top: 1rem;">
+                        <label for="filtro-tipo-servicio">Filtrar por Tipo Servicio</label>
+                        <select id="filtro-tipo-servicio"><option value="todos">Todos</option></select>
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 1rem;">
+                    <label for="search-service-input" style="display: none;">Buscar Servicio</label>
+                    <input type="search" id="search-service-input" placeholder="Buscar por Nº Req, Nº NV o Cliente...">
+                    <div class="search-action-buttons">
+                        <button id="search-go-btn" class="icon-btn" style="width: 100%; justify-content: center;">Buscar</button>
+                        <button id="search-next-btn" class="icon-btn" style="width: 100%; justify-content: center; display: none;">Siguiente</button>
+                    </div>
+                </div>
+            </div>
+            <div id="daily-view-container">
+                 <div class="calendar-scroll-container">
+                    <div id="current-time-indicator" style="display: none;"></div>
+                    <div id="time-axis" class="time-axis">
+                        <div class="time-axis-header">Hora</div>
+                        <div id="time-slots-wrapper"></div>
+                    </div>
+                    <div class="calendar-content">
+                        <div id="technician-headers-container" class="technician-headers-container"></div>
+                        <div id="technician-columns-container" class="technician-columns-container"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="weekly-view-container" style="display:none;"></div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="service-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-req-num"></h2>
+                <button class="modal-close-btn" data-modal-id="service-modal">&times;</button>
+            </div>
+            <div class="modal-content">
+                <div class="detail-grid">
+                    <div class="detail-item"><strong>Cliente:</strong> <span id="modal-cliente"></span></div>
+                    <div class="detail-item"><strong>Nº NV:</strong> <span id="modal-numNV"></span></div>
+                    <div class="detail-item full-width"><strong>Dirección:</strong> <span id="modal-direccion"></span></div>
+                    <div class="detail-item"><strong>Vendedor:</strong> <span id="modal-vendedor"></span></div>
+                    <div class="detail-item"><strong>Estado Actual:</strong> <span id="modal-estado"></span></div>
+                    <div class="detail-item"><strong>Monto Servicio:</strong> <span id="modal-montoServicio"></span></div>
+                    <div class="detail-item"><strong>Tipo Servicio:</strong> <span id="modal-tipoServicio"></span></div>
+                    <div class="detail-item"><strong>Técnico Asignado:</strong> <span id="modal-tecnico"></span></div>
+                    <div class="detail-item"><strong>Fecha Asignada:</strong> <span id="modal-fechaAsignada"></span></div>
+                    <div class="detail-item"><strong>Hora Traslado:</strong> <span id="modal-horaTraslado"></span></div>
+                    <div class="detail-item"><strong>Hora Inicio:</strong> <span id="modal-horaInicio"></span></div>
+                    <div class="detail-item"><strong>Hora Término:</strong> <span id="modal-horaTermino"></span></div>
+                    <div class="detail-item"><strong>Contacto:</strong> <span id="modal-contacto"></span></div>
+                    <div class="detail-item"><strong>Teléfono:</strong> <span id="modal-telefono"></span></div>
+                    <div class="detail-item"><strong>Tiene Repuestos:</strong> <span id="modal-tieneRepuestos"></span></div>
+                    <div class="detail-item"><strong>Repuestos Despachados:</strong> <span id="modal-repDespachados"></span></div>
+                    <div class="detail-item"><strong>Fecha Creación:</strong> <span id="modal-fecha-solicitud"></span></div>
+                    <div class="detail-item"><strong>Última Edición:</strong> <span id="modal-fecha-edicion"></span></div>
+                    <div class="detail-item full-width"><strong>Info. Servicio:</strong> <span id="modal-info-servicio"></span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+    // --- SDKs DE FIREBASE v9+ ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+    import { getFirestore, collection, query, where, orderBy, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+
+    // --- CONFIGURACIÓN DE FIREBASE ---
+    // Tu nueva configuración de Firebase va aquí.
+    const firebaseConfig = {
+      apiKey: "AIzaSyAHxnU2r_QdtZTjzC3LL0dYrb9wit6sc0M",
+      authDomain: "maquiform-9347f.firebaseapp.com",
+      projectId: "maquiform-9347f",
+      storageBucket: "maquiform-9347f.firebasestorage.app",
+      messagingSenderId: "408016338170",
+      appId: "1:408016338170:web:7b10d7413cd8fb69d1dd43"
+    };
+
+    // --- INICIALIZACIÓN DE FIREBASE ---
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    // --- CONSTANTES Y ESTADO DE LA APP ---
+    const ZONAS = {
+        'Iquique': ['Héctor Loaiza'],
+        'Antofagasta': ['Enzo Rodriguez', 'Beato Paula'],
+        'La Serena': ['Julian Cantillanes', 'Julián Herrera'],
+        'Valparaiso': ['Claudio López', 'Alejandro Mena', 'Juan Manuel Chandía', 'Enrico Ramírez', 'Gabriel Cifuentes', 'Henry Zamora'],
+        'RM': ['Marco López','Víctor Chávez', 'José Riquelme', 'Jonathan Huichalaf'],
+        'Rancagua': ['Juan Rojas'],
+        'Talca': ['Marcelo Riveros', 'Sergio Ibañez'],
+        'Chillan': ['Marco Ayala'],
+        'Los Angeles': ['Fredy Gallardo'],
+        'Concepcion': ['Felipe Santos', 'Víctor Valdebenito'],
+        'Temuco': ['Rogelio Lagos'],
+        'Osorno': ['Manuel Urrutia'],
+        'Puerto Montt': ['Juan González']
+    };
+    
+    const CALENDAR_START_HOUR = 7;
+    const CALENDAR_END_HOUR = 20;
+    const PIXELS_PER_HOUR = 50; 
+    
+    const state = {
+        serviciosCache: [],
+        tecnicosCache: [],
+        currentCalendarDate: new Date(),
+        currentTimeInterval: null,
+        currentView: 'day',
+        activeFilters: [],
+        searchTerm: '',
+        foundServiceDates: [],
+        currentFoundServiceIndex: 0,
+    };
+    let unsubscribeServicios;
+    
+    // --- SELECTORES DE UI ---
+    const ui = {
+        loginContainer: document.getElementById('login-container'),
+        mainContent: document.getElementById('main-content'),
+        logoutButton: document.getElementById('logout-button'),
+        headerTitle: document.getElementById('header-title'),
+        loginForm: document.getElementById('login-form'),
+        emailInput: document.getElementById('email'), 
+        passwordInput: document.getElementById('password'),
+        datePicker: document.getElementById('date-picker'),
+        currentDateDisplay: document.getElementById('current-date-display'),
+        prevBtn: document.getElementById('prev-btn'),
+        nextBtn: document.getElementById('next-btn'),
+        todayBtn: document.getElementById('today-btn'),
+        viewDayBtn: document.getElementById('view-day-btn'),
+        viewWeekBtn: document.getElementById('view-week-btn'),
+        dailyViewContainer: document.getElementById('daily-view-container'),
+        weeklyViewContainer: document.getElementById('weekly-view-container'),
+        timeSlotsWrapper: document.getElementById('time-slots-wrapper'),
+        filterTipoServicio: document.getElementById('filtro-tipo-servicio'),
+        technicianColsContainer: document.getElementById('technician-columns-container'),
+        technicianHeadersContainer: document.getElementById('technician-headers-container'),
+        currentTimeIndicator: document.getElementById('current-time-indicator'),
+        filterControls: {
+            toggleBtn: document.getElementById('toggle-filter-btn'),
+            optionsContainer: document.getElementById('filter-options'),
+        },
+        searchServiceInput: document.getElementById('search-service-input'),
+        searchGoBtn: document.getElementById('search-go-btn'),
+        searchNextBtn: document.getElementById('search-next-btn'),
+        modal: { 
+            overlay: document.getElementById('service-modal'), 
+            reqNum: document.getElementById('modal-req-num'), 
+            cliente: document.getElementById('modal-cliente'), 
+            numNV: document.getElementById('modal-numNV'), 
+            direccion: document.getElementById('modal-direccion'), 
+            vendedor: document.getElementById('modal-vendedor'), 
+            estado: document.getElementById('modal-estado'), 
+            montoServicio: document.getElementById('modal-montoServicio'),
+            tipoServicio: document.getElementById('modal-tipoServicio'),
+            tecnico: document.getElementById('modal-tecnico'), 
+            fechaAsignada: document.getElementById('modal-fechaAsignada'), 
+            horaTraslado: document.getElementById('modal-horaTraslado'), 
+            horaInicio: document.getElementById('modal-horaInicio'), 
+            horaTermino: document.getElementById('modal-horaTermino'), 
+            contacto: document.getElementById('modal-contacto'), 
+            telefono: document.getElementById('modal-telefono'), 
+            tieneRepuestos: document.getElementById('modal-tieneRepuestos'), 
+            repDespachados: document.getElementById('modal-repDespachados'), 
+            fechaSolicitud: document.getElementById('modal-fecha-solicitud'), 
+            fechaEdicion: document.getElementById('modal-fecha-edicion'), 
+            infoServicio: document.getElementById('modal-info-servicio')
+        },
+        modalCloseBtns: document.querySelectorAll('.modal-close-btn'),
+    };
+
+    // --- LÓGICA DE AUTENTICACIÓN ---
+    onAuthStateChanged(auth, async user => {
+        if (user) {
+            setupApp(user);
+        } else {
+            tearDownApp();
+        }
+    });
+    
+    async function setupApp(user) {
+        ui.loginContainer.style.display = 'none';
+        ui.mainContent.style.display = 'block';
+        ui.headerTitle.textContent = `Calendario: ${user.email.split('@')[0]}`;
+        await cargarTecnicos();
+        iniciarListenerServicios();
+        setupCalendar(); 
+        setupFilters();
+        addSearchListeners();
+        // setupVoiceSearch(); // Opcional, si se quiere mantener
+        ui.filterTipoServicio.addEventListener('change', () => {
+            render();
+        });
+    }
+
+    function tearDownApp() {
+        ui.loginContainer.style.display = 'flex';
+        ui.mainContent.style.display = 'none';
+        if (unsubscribeServicios) unsubscribeServicios();
+        if (state.currentTimeInterval) clearInterval(state.currentTimeInterval);
+    }
+
+    // --- LÓGICA DE DATOS ---
+    async function cargarTecnicos() {
+        try {
+            const tecnicosRef = collection(db, 'tecnicos');
+            const q = query(tecnicosRef, where('activo', '==', true), orderBy('nombre'));
+            const snapshot = await getDocs(q);
+            state.tecnicosCache = snapshot.docs.map(doc => ({id: doc.id, nombre: doc.data().nombre}));
+        } catch (error) { console.error("Error al cargar técnicos: ", error); }
+    }
+
+    function iniciarListenerServicios() {
+        const serviciosRef = collection(db, 'servicios');
+        unsubscribeServicios = onSnapshot(serviciosRef, snapshot => {
+            state.serviciosCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            populateTipoServicioFilter();
+            if (state.searchTerm) {
+                performSearch(state.searchTerm, false); 
+            } else {
+                render();
+            }
+        }, error => console.error("Error al escuchar servicios:", error));
+    }
+
+    // --- LÓGICA DEL CALENDARIO Y UI (sin cambios, ya que no depende de la sintaxis de Firebase) ---
+    // Todas las funciones desde setupCalendar hasta el final se mantienen casi idénticas.
+    // Solo se ajustan las llamadas a la autenticación.
+    
+    function setupCalendar() {
+        updateDatePicker(); 
+        ui.timeSlotsWrapper.innerHTML = ''; 
+        for (let hour = CALENDAR_START_HOUR; hour < CALENDAR_END_HOUR; hour++) {
+            const timeSlot = document.createElement('div');
+            timeSlot.className = 'time-slot';
+            timeSlot.style.height = `${PIXELS_PER_HOUR}px`;
+            timeSlot.innerHTML = `<span>${hour}:00</span>`;
+            ui.timeSlotsWrapper.appendChild(timeSlot);
+        }
+    }
+
+    function setupFilters() {
+        const container = ui.filterControls.optionsContainer;
+        container.innerHTML = '';
+        for (const zona in ZONAS) {
+            const checkboxContainer = document.createElement('div');
+            checkboxContainer.className = 'filter-checkbox';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `filter-${zona}`;
+            checkbox.value = zona;
+            
+            const label = document.createElement('label');
+            label.htmlFor = `filter-${zona}`;
+            label.textContent = zona;
+            
+            checkboxContainer.appendChild(checkbox);
+            checkboxContainer.appendChild(label);
+            container.appendChild(checkboxContainer);
+        }
+
+        ui.filterControls.toggleBtn.addEventListener('click', () => {
+            const isHidden = container.style.display === 'none';
+            container.style.display = isHidden ? 'flex' : 'none';
+            ui.filterControls.toggleBtn.textContent = isHidden ? 'Ocultar Filtros' : 'Filtro por Zona';
+        });
+        
+        container.addEventListener('change', () => {
+            const checkedBoxes = container.querySelectorAll('input[type="checkbox"]:checked');
+            state.activeFilters = Array.from(checkedBoxes).map(cb => cb.value);
+            render();
+        });
+    }
+
+    function addSearchListeners() {
+        ui.searchGoBtn.addEventListener('click', () => {
+            const term = ui.searchServiceInput.value.toLowerCase().trim();
+            if (term) {
+                performSearch(term, true);
+            } else {
+                state.searchTerm = '';
+                state.foundServiceDates = [];
+                ui.searchNextBtn.style.display = 'none';
+                render();
+            }
+        });
+
+        ui.searchNextBtn.addEventListener('click', () => {
+            if (state.foundServiceDates.length > 0) {
+                state.currentFoundServiceIndex = (state.currentFoundServiceIndex + 1) % state.foundServiceDates.length;
+                navigateToDate(state.foundServiceDates[state.currentFoundServiceIndex]);
+            }
+        });
+
+        ui.searchServiceInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                ui.searchGoBtn.click();
+            }
+        });
+        ui.searchServiceInput.addEventListener('input', () => {
+            if (ui.searchServiceInput.value.trim() === '') {
+                state.searchTerm = '';
+                state.foundServiceDates = [];
+                ui.searchNextBtn.style.display = 'none';
+                render();
+            }
+        });
+    }
+
+    const normalizeText = (text) => {
+        if (!text) return '';
+        return text
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
+    };
+
+    function performSearch(term, navigateToFirst = true) {
+        state.searchTerm = term;
+        state.foundServiceDates = [];
+
+        const termNormalized = normalizeText(term);
+
+        const matchingServices = state.serviciosCache.filter(s => {
+            const reqNormalized = normalizeText(s.numRequerimiento);
+            const nvNormalized = normalizeText(s.numNV);
+            const clienteNormalized = normalizeText(s.cliente);
+
+            return (reqNormalized.includes(termNormalized)) ||
+                   (nvNormalized.includes(termNormalized)) ||
+                   (clienteNormalized.includes(termNormalized));
+        });
+        
+        const uniqueDates = [...new Set(matchingServices.map(s => s.fechaAsignada))]
+                            .filter(date => date)
+                            .sort(); 
+        state.foundServiceDates = uniqueDates;
+
+        if (state.foundServiceDates.length > 0) {
+            if (navigateToFirst) {
+                state.currentFoundServiceIndex = 0;
+                navigateToDate(state.foundServiceDates[0]);
+            }
+            ui.searchNextBtn.style.display = state.foundServiceDates.length > 1 ? 'inline-flex' : 'none';
+        } else {
+            alert(`No se encontraron servicios para "${term}".`);
+            ui.searchNextBtn.style.display = 'none';
+            render();
+        }
+    }    
+    
+    function getYYYYMMDD(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    
+    function updateDatePicker() {
+        ui.datePicker.value = getYYYYMMDD(state.currentCalendarDate);
+    }
+
+    function navigateToDate(dateString) {
+        if (!dateString) return;
+        const parts = dateString.split('-').map(Number);
+        state.currentCalendarDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        updateDatePicker();
+        render(); 
+    }
+
+    function getFilteredTechnicians() {
+        if (state.activeFilters.length === 0) {
+            return state.tecnicosCache;
+        }
+        const techniciansInZone = state.activeFilters.flatMap(zona => ZONAS[zona]);
+        return state.tecnicosCache.filter(tech => techniciansInZone.includes(tech.nombre));
+    }
+
+    function getFilteredServices() {
+        const tipoServicioFilter = ui.filterTipoServicio.value;
+        let services = state.serviciosCache;
+        
+        if (tipoServicioFilter !== 'todos') {
+            services = services.filter(s => s.tipoServicio === tipoServicioFilter);
+        }
+        
+        return services;
+    }
+
+    function populateTipoServicioFilter() {
+        const tipos = [ "Canal Tradicional", "Descanso Turno", "Montaje", "Otro", "Post Venta", "Proyección Asistencia", "Proyección Mantención", "Proyección Repuestos", "Retail Asistencia", "Retail Mantencion", "Retail Repuestos", "Turno", "Vacaciones" ].sort();
+        
+        const currentFilterVal = ui.filterTipoServicio.value;
+        ui.filterTipoServicio.innerHTML = '<option value="todos">Todos</option>';
+        tipos.forEach(t => ui.filterTipoServicio.add(new Option(t, t)));
+        ui.filterTipoServicio.value = tipos.includes(currentFilterVal) ? currentFilterVal : 'todos';
+    }
+
+    function displayCurrency(value) {
+        if (value === undefined || value === null || value === '' || isNaN(value)) return 'N/A';
+        const numericValue = parseInt(String(value).replace(/\$|\./g, ''), 10);
+        if (isNaN(numericValue)) return 'N/A';
+        return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(numericValue);
+    }
+
+    function render() {
+        if (state.currentView === 'day') {
+            renderDailyCalendar();
+        } else {
+            renderWeeklyCalendar();
+        }
+    }
+    
+    function filterServicesBySearchTerm(services) {
+        if (!state.searchTerm) return services;
+        const termNormalized = normalizeText(state.searchTerm);
+        return services.filter(s => {
+            const reqNormalized = normalizeText(s.numRequerimiento);
+            const nvNormalized = normalizeText(s.numNV);
+            const clienteNormalized = normalizeText(s.cliente);
+            return (reqNormalized.includes(termNormalized)) ||
+                   (nvNormalized.includes(termNormalized)) ||
+                   (clienteNormalized.includes(termNormalized));
+        });
+    }
+
+    function renderDailyCalendar() {
+        ui.dailyViewContainer.style.display = 'block';
+        ui.weeklyViewContainer.style.display = 'none';
+        ui.currentTimeIndicator.style.display = 'none';
+        
+        const filteredTechnicians = getFilteredTechnicians();
+        if (filteredTechnicians.length === 0) {
+            ui.technicianColsContainer.innerHTML = '<div style="padding: 2rem; text-align:center; width: 100%;">Seleccione una zona o no hay técnicos disponibles.</div>';
+            ui.technicianHeadersContainer.innerHTML = '';
+            return;
+        };
+
+        ui.currentDateDisplay.textContent = state.currentCalendarDate.toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        ui.technicianColsContainer.innerHTML = '';
+        ui.technicianHeadersContainer.innerHTML = '';
+        
+        let servicesForDay = getFilteredServices().filter(s => s.fechaAsignada === getYYYYMMDD(state.currentCalendarDate) && s.tecnicos);
+        
+        if (state.searchTerm) {
+            servicesForDay = filterServicesBySearchTerm(servicesForDay);
+        }
+
+        filteredTechnicians.forEach(tecnico => {
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'technician-header';
+            headerDiv.textContent = tecnico.nombre;
+            ui.technicianHeadersContainer.appendChild(headerDiv);
+
+            const columnDiv = document.createElement('div');
+            columnDiv.className = 'technician-column';
+            
+            for (let hour = CALENDAR_START_HOUR; hour < CALENDAR_END_HOUR; hour++) {
+                const gridCell = document.createElement('div');
+                gridCell.className = 'time-slot';
+                gridCell.style.height = `${PIXELS_PER_HOUR}px`;
+                columnDiv.appendChild(gridCell);
+            }
+            ui.technicianColsContainer.appendChild(columnDiv);
+
+            const techServices = servicesForDay
+                .filter(s => Array.isArray(s.tecnicos) ? s.tecnicos.includes(tecnico.nombre) : s.tecnicos === tecnico.nombre)
+                .map(s => ({...s, start: timeToMinutes(s.horaInicio), end: timeToMinutes(s.horaTermino) || timeToMinutes(s.horaInicio) + 60 }))
+                .sort((a,b) => a.start - b.start);
+            
+            const layout = calculateOverlaps(techServices);
+
+            layout.forEach(service => {
+                const { serviceBlock, travelBlock } = createEventBlocks(service);
+                if (travelBlock) columnDiv.appendChild(travelBlock);
+                if (serviceBlock) columnDiv.appendChild(serviceBlock);
+            });
+        });
+        updateCurrentTimeIndicator();
+    }
+    
+    function renderWeeklyCalendar() {
+        ui.dailyViewContainer.style.display = 'none';
+        ui.weeklyViewContainer.style.display = 'block';
+        ui.currentTimeIndicator.style.display = 'none';
+        const container = ui.weeklyViewContainer;
+        container.innerHTML = ''; 
+
+        const filteredTechnicians = getFilteredTechnicians();
+        if (filteredTechnicians.length === 0) {
+             container.innerHTML = '<div class="card" style="text-align:center;">Seleccione una zona o no hay técnicos disponibles.</div>';
+            return;
+        };
+
+        const weekStart = getWeekStartDate(state.currentCalendarDate);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        ui.currentDateDisplay.textContent = `Semana del ${weekStart.toLocaleDateString('es-CL', {day: 'numeric', month: 'long'})} al ${weekEnd.toLocaleDateString('es-CL', {day: 'numeric', month: 'long', year: 'numeric'})}`;
+
+        const gridContainer = document.createElement('div');
+        gridContainer.className = 'week-grid-container';
+        container.appendChild(gridContainer);
+        
+        gridContainer.appendChild(document.createElement('div')); 
+        const weekDates = [];
+        for (let i = 0; i < 7; i++) {
+            const day = new Date(weekStart);
+            day.setDate(day.getDate() + i);
+            weekDates.push(day);
+            const headerCell = document.createElement('div');
+            headerCell.className = 'week-grid-header';
+            headerCell.innerHTML = `${day.toLocaleDateString('es-CL', {weekday: 'short'})}<br>${day.toLocaleDateString('es-CL', {day: 'numeric', month: 'short'})}`;
+            gridContainer.appendChild(headerCell);
+        }
+
+        const weekDateStrings = weekDates.map(d => getYYYYMMDD(d));
+        let servicesForWeek = getFilteredServices().filter(s => weekDateStrings.includes(s.fechaAsignada) && s.tecnicos);
+        
+        if (state.searchTerm) {
+            servicesForWeek = filterServicesBySearchTerm(servicesForWeek);
+        }
+
+        filteredTechnicians.forEach(tecnico => {
+            const techCell = document.createElement('div');
+            techCell.className = 'week-grid-tech-cell';
+            techCell.textContent = tecnico.nombre;
+            gridContainer.appendChild(techCell);
+
+            weekDates.forEach(day => {
+                const dayCell = document.createElement('div');
+                dayCell.className = 'week-grid-day-cell';
+                
+                const dayString = getYYYYMMDD(day);
+                const servicesForCell = servicesForWeek
+                    .filter(s => s.fechaAsignada === dayString && (Array.isArray(s.tecnicos) ? s.tecnicos.includes(tecnico.nombre) : s.tecnicos === tecnico.nombre))
+                    .sort((a,b) => (a.horaInicio || '').localeCompare(b.horaInicio || ''));
+
+                servicesForCell.forEach(service => {
+                    const statusClass = `status-${(service.estado || 'Otros').replace(/\s+/g, '-')}`;
+                    const typeClass = service.tipoServicio ? `type-${service.tipoServicio.replace(/\s+/g, '-')}` : ''; 
+                    const eventItem = document.createElement('div');
+                    eventItem.className = `week-event-item ${statusClass} ${typeClass}`; 
+                    eventItem.dataset.serviceId = service.id;
+                    const time = (service.horaInicio && service.horaTermino) ? `${service.horaInicio} - ${service.horaTermino}` : (service.horaInicio || '');
+                    let reqContent = service.numRequerimiento || 'N/A'; // Lógica de link se puede añadir aquí si se desea
+                    eventItem.innerHTML = `
+                        <strong>${service.cliente || 'N/A'} - Req: ${reqContent}</strong>
+                        <span>${time} - ${displayCurrency(service.montoServicio)}</span> <span>${service.tipoServicio || 'Asistencia'}</span>
+                    `;
+                    dayCell.appendChild(eventItem);
+                });
+                gridContainer.appendChild(dayCell);
+            });
+        });
+        gridContainer.addEventListener('click', handleEventClick);
+    }        
+    
+    function calculateOverlaps(services) {
+        const layout = [];
+        services.forEach(s => s.processed = false); 
+        for (let i = 0; i < services.length; i++) {
+            if (services[i].processed) continue;
+            let concurrent = [services[i]];
+            for (let j = i + 1; j < services.length; j++) {
+                 if(services[i].fechaAsignada !== services[j].fechaAsignada) continue;
+                if (services[j].start < services[i].end && services[j].end > services[i].start) {
+                   concurrent.push(services[j]);
+                }
+            }
+            const width = 90 / concurrent.length;
+            concurrent.sort((a,b) => a.start - b.start).forEach((event, index) => {
+                if (!event.processed) {
+                    layout.push({ ...event, style: { width: `${width}%`, left: `${index * width}%` } });
+                    event.processed = true;
+                }
+            });
+        }
+        return layout;
+    }
+
+    const timeToMinutes = (timeStr) => !timeStr || !timeStr.includes(':') ? 0 : timeStr.split(':').map(Number).reduce((h, m) => h * 60 + m);
+    
+    function createEventBlocks(service) {
+        if (service.start === undefined) return {};
+        const statusClass = `status-${(service.estado || 'Otros').replace(/\s+/g, '-')}`;
+        const typeClass = service.tipoServicio ? `type-${service.tipoServicio.replace(/\s+/g, '-')}` : ''; 
+        
+        const serviceTop = ((service.start / 60) - CALENDAR_START_HOUR) * PIXELS_PER_HOUR;
+        const serviceHeight = Math.max(((service.end - service.start) / 60) * PIXELS_PER_HOUR, 15);
+        
+        const serviceBlock = document.createElement('div');
+        serviceBlock.className = `event-block ${statusClass} ${typeClass}`;
+        Object.assign(serviceBlock.style, { top: `${serviceTop}px`, height: `${serviceHeight}px`, ...service.style });
+        
+        let reqContent = service.numRequerimiento || 'N/A';
+
+        serviceBlock.innerHTML = `
+            <strong>${service.cliente || 'N/A'} - Req: ${reqContent}</strong>
+            <span>${service.horaInicio} - ${service.horaTermino || ''}</span>
+            <span>${service.tipoServicio || 'N/A'} - ${displayCurrency(service.montoServicio)}</span> `;
+        serviceBlock.dataset.serviceId = service.id;
+        serviceBlock.title = `Cliente: ${service.cliente}\nReq: ${service.numRequerimiento || 'N/A'}\nEstado: ${service.estado}\nMonto: ${displayCurrency(service.montoServicio)}\nTipo: ${service.tipoServicio || 'N/A'}`;
+        
+        let travelBlock = null;
+        if (service.horaTraslado && service.horaInicio) {
+            const travelStartMinutes = timeToMinutes(service.horaTraslado);
+            const serviceStartMinutes = service.start;
+            if (travelStartMinutes > 0 && travelStartMinutes < serviceStartMinutes) {
+                const travelDurationMinutes = serviceStartMinutes - travelStartMinutes;
+                const travelHeight = (travelDurationMinutes / 60) * PIXELS_PER_HOUR;
+                const travelTop = serviceTop - travelHeight;
+                travelBlock = document.createElement('div');
+                travelBlock.className = `travel-block ${statusClass} ${typeClass}`;
+                Object.assign(travelBlock.style, { top: `${travelTop}px`, height: `${travelHeight}px`, ...service.style });
+                travelBlock.innerHTML = `Traslado`;
+                travelBlock.dataset.serviceId = service.id;
+                travelBlock.title = `Traslado de ${service.horaTraslado} a ${service.horaInicio} para el servicio de ${service.cliente}`;
+            }
+        }
+        return { serviceBlock, travelBlock };
+    }
+
+    function updateCurrentTimeIndicator() {
+        if (state.currentTimeInterval) clearInterval(state.currentTimeInterval);
+        if (state.currentView !== 'day') {
+            ui.currentTimeIndicator.style.display = 'none';
+            return;
+        }
+        const today = new Date();
+        const todayYYYYMMDD = getYYYYMMDD(today);
+        const currentCalendarYYYYMMDD = getYYYYMMDD(state.currentCalendarDate);
+
+        if (currentCalendarYYYYMMDD !== todayYYYYMMDD) {
+            ui.currentTimeIndicator.style.display = 'none';
+            return;
+        }
+        const setPosition = () => {
+            const now = new Date();
+            const minutes = now.getHours() * 60 + now.getMinutes();
+            const headerHeight = document.querySelector('.technician-header')?.offsetHeight || 53;
+            const top = ((minutes / 60) - CALENDAR_START_HOUR) * PIXELS_PER_HOUR + headerHeight;
+            const calendarBodyHeight = (CALENDAR_END_HOUR - CALENDAR_START_HOUR) * PIXELS_PER_HOUR;
+            if (top >= headerHeight && top < calendarBodyHeight + headerHeight) {
+                ui.currentTimeIndicator.style.top = `${top}px`;
+                ui.currentTimeIndicator.style.display = 'block';
+            } else {
+                ui.currentTimeIndicator.style.display = 'none';
+            }
+        };
+        setPosition();
+        state.currentTimeInterval = setInterval(setPosition, 60000);
+    }
+    
+    function getWeekStartDate(date) {
+        const d = new Date(date);
+        const dayOfWeek = d.getDay();
+        const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        const weekStart = new Date(d.getFullYear(), d.getMonth(), diff);
+        weekStart.setHours(0,0,0,0);
+        return weekStart;
+    }
+    
+    function switchView(view) {
+        state.currentView = view;
+        render();
+        ui.viewDayBtn.classList.toggle('active', view === 'day');
+        ui.viewWeekBtn.classList.toggle('active', view === 'week');
+    }
+
+    ui.prevBtn.addEventListener('click', () => {
+         if (state.currentView === 'day') {
+            state.currentCalendarDate.setDate(state.currentCalendarDate.getDate() - 1);
+        } else {
+            state.currentCalendarDate.setDate(state.currentCalendarDate.getDate() - 7);
+        }
+        updateDatePicker();
+        render();
+    });
+
+    ui.todayBtn.addEventListener('click', () => {
+        state.currentCalendarDate = new Date();
+        updateDatePicker();
+        render();
+    });
+
+    ui.nextBtn.addEventListener('click', () => {
+        if (state.currentView === 'day') {
+            state.currentCalendarDate.setDate(state.currentCalendarDate.getDate() + 1);
+        } else {
+            state.currentCalendarDate.setDate(state.currentCalendarDate.getDate() + 7);
+        }
+        updateDatePicker();
+        render();
+    });
+    
+    ui.datePicker.addEventListener('change', () => { 
+        const dateParts = ui.datePicker.value.split('-').map(Number);
+        state.currentCalendarDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+        render(); 
+    });
+    
+    ui.viewDayBtn.addEventListener('click', () => switchView('day'));
+    ui.viewWeekBtn.addEventListener('click', () => switchView('week'));
+
+    function handleEventClick(e) {
+        const block = e.target.closest('[data-service-id]');
+        if (block?.dataset.serviceId) {
+            const service = state.serviciosCache.find(s => s.id === block.dataset.serviceId);
+            if (service) openModal('service-modal', service);
+        }
+    }
+    
+    ui.dailyViewContainer.addEventListener('click', handleEventClick);
+    ui.weeklyViewContainer.addEventListener('click', handleEventClick);
+
+    function openModal(modalId, service) {
+        if (modalId === 'service-modal') {
+            const m = ui.modal;
+            const formatTimestamp = (ts) => ts ? ts.toDate().toLocaleString('es-CL', {timeZone: 'America/Santiago'}) : 'N/A';
+            
+            m.reqNum.innerHTML = `Detalles: Req #${service.numRequerimiento || 'N/A'}`;
+            m.cliente.textContent = service.cliente || 'N/A';
+            m.numNV.textContent = service.numNV || 'N/A';
+            m.direccion.textContent = service.direccion || 'N/A';
+            m.vendedor.textContent = service.vendedor ? service.vendedor.split('@')[0] : 'N/A';
+            m.estado.textContent = service.estado || 'N/A';
+            m.montoServicio.textContent = displayCurrency(service.montoServicio);
+            m.tipoServicio.textContent = service.tipoServicio || 'N/A';
+            const tecnicos = Array.isArray(service.tecnicos) ? service.tecnicos.join(', ') : (service.tecnico || 'Sin Asignar');
+            m.tecnico.textContent = tecnicos;
+            m.fechaAsignada.textContent = service.fechaAsignada || 'N/A';
+            m.horaTraslado.textContent = service.horaTraslado || 'N/A';
+            m.horaInicio.textContent = service.horaInicio || 'N/A';
+            m.horaTermino.textContent = service.horaTermino || 'N/A';
+            m.contacto.textContent = service.nomContacto || 'N/A';
+            m.telefono.textContent = service.numContacto || 'N/A';
+            m.tieneRepuestos.textContent = service.tieneRepuestos || 'N/A';
+            m.repDespachados.textContent = service.repDespachados || 'N/A';
+            m.fechaSolicitud.textContent = formatTimestamp(service.timestamp);
+            m.fechaEdicion.textContent = service.fechaEdicion ? formatTimestamp(service.fechaEdicion) : 'Sin ediciones';
+            m.infoServicio.textContent = service.infoServicio || 'N/A';
+            document.getElementById(modalId).classList.add('visible');
+        }
+    }
+
+    function closeModal(modalId) { document.getElementById(modalId).classList.remove('visible'); }
+    ui.modalCloseBtns.forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.modalId)));
+    ui.modal.overlay.addEventListener('click', (e) => { if (e.target === ui.modal.overlay) closeModal(ui.modal.overlay.id); });
+    
+    // --- EVENT LISTENERS CON SINTAXIS v9 ---
+    ui.loginForm.addEventListener('submit', (e) => { 
+        e.preventDefault(); 
+        signInWithEmailAndPassword(auth, ui.emailInput.value, ui.passwordInput.value)
+            .catch(err => alert('Error: Credenciales incorrectas.')); 
+    });
+    
+    ui.logoutButton.addEventListener('click', () => signOut(auth));
+</script>
+</body>
+</html>

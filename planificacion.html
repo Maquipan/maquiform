@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal del Planificador Unificado</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <style>
+        :root {
+            --font-main: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            --transition-speed: 0.3s;
+        }
+        [data-theme="dark"] {
+            --bg-primary: #1a1b26; --bg-secondary: #24283b; --bg-tertiary: #414868;
+            --text-primary: #c0caf5; --text-secondary: #a9b1d6; --accent: #7dcfff;
+            --accent-glow: rgba(125, 207, 255, 0.2); --border-color: #3b3f51;
+            --success: #9ece6a; --pending: #e0af68; --danger: #f7768e; --in-progress: #7aa2f7;
+            --modal-bg: rgba(36, 40, 59, 0.85);
+            --chat-bubble-ejecutiva: #7A4C5D;
+            --chat-bubble-planificador: #4E6758;
+        }
+        [data-theme="light"] {
+            --bg-primary: #f0f2f5; --bg-secondary: #ffffff; --bg-tertiary: #e9ecef;
+            --text-primary: #212529; --text-secondary: #495057; --accent: #007bff;
+            --accent-glow: rgba(0, 123, 255, 0.15); --border-color: #dee2e6;
+            --success: #28a745; --pending: #ffc107; --danger: #dc3545; --in-progress: #17a2b8;
+            --modal-bg: rgba(255, 255, 255, 0.85);
+            --chat-bubble-ejecutiva: #F8CECC;
+            --chat-bubble-planificador: #D5E8D4;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: var(--font-main); margin: 0; background-color: var(--bg-primary); color: var(--text-primary); }
+        .container { max-width: 95%; margin: 0 auto; padding: 1rem 1.5rem; }
+        .header-controls { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background-color: var(--bg-secondary); border-radius: 12px; margin-bottom: 1.5rem; border: 1px solid var(--border-color); }
+        .header-controls h1 { margin: 0; font-size: 1.5rem; color: var(--text-primary); font-weight: 600; }
+        .action-buttons { display: flex; align-items: center; gap: 1rem; }
+        .icon-btn { background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-weight: 600; width: auto; transition: all var(--transition-speed); }
+        .icon-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); }
+        .icon-btn.logout { background: var(--danger); border-color: var(--danger); color: white; }
+        .icon-btn svg { width: 16px; height: 16px; }
+        .card { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card h2 { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.2rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
+        select, input, textarea { width: 100%; padding: 0.75rem; font-size: 0.95rem; border: 1px solid var(--border-color); border-radius: 8px; box-sizing: border-box; margin-bottom: 0; background: var(--bg-tertiary); color: var(--text-primary); }
+        button { width: 100%; padding: 0.75rem; font-size: 1rem; border: none; border-radius: 8px; box-sizing: border-box; background-color: var(--accent); color: var(--bg-secondary); font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        button:disabled { background-color: var(--bg-tertiary); color: var(--text-secondary); cursor: not-allowed; opacity: 0.7; }
+        button:hover:not(:disabled) { filter: brightness(1.1); }
+        label { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem; display: block; color: var(--text-secondary); }
+        #login-container { display: flex; align-items: center; justify-content: center; height: 100vh; padding: 1.5rem; }
+        .login-card { max-width: 450px; width: 100%; }
+        #error-message { color: var(--danger); text-align: center; margin-top: 1rem; display: none; }
+        .filtros-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem 1.5rem; align-items: flex-end; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.8rem 0.6rem; font-size: 0.85rem; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+        tbody tr:hover { background-color: var(--bg-tertiary); }
+        .action-cell { display: flex; gap: 0.5rem; align-items: center; }
+        .action-cell button { width: auto; font-size: 0.8rem; padding: 0.4rem 0.6rem; }
+        .status-badge { padding: 0.3em 0.7em; border-radius: 10px; font-weight: 600; font-size: 0.8rem; text-align: center; display: inline-block; border: 1px solid currentColor; background: transparent; }
+        .status-badge.status-Pendiente { color: var(--pending); }
+        .status-badge.status-Confirmado, .status-badge.status-En-Progreso { color: var(--in-progress); }
+        .status-badge.status-Completado { color: var(--success); }
+        .theme-switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .theme-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-tertiary); transition: var(--transition-speed); border-radius: 26px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: var(--transition-speed); border-radius: 50%; }
+        input:checked + .slider { background-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(24px); }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity var(--transition-speed); }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-container { background: var(--modal-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--border-color); border-radius: 16px; width: 90%; max-width: 900px; padding: 1.5rem; transform: scale(0.9); transition: transform var(--transition-speed); display: flex; flex-direction: column; max-height: 95vh; }
+        .modal-overlay.visible .modal-container { transform: scale(1); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem; flex-shrink: 0; }
+        .modal-header h2 { margin: 0; color: var(--accent); }
+        .modal-close-btn { background: none; border: none; font-size: 1.5rem; color: var(--text-secondary); cursor: pointer; padding: 0; }
+        .modal-body-container { display: flex; gap: 1.5rem; overflow: hidden; flex-grow: 1; }
+        .modal-content { overflow-y: auto; padding-right: 10px; flex: 6; }
+        .modal-chat-section { flex: 4; display: flex; flex-direction: column; border-left: 1px solid var(--border-color); padding-left: 1.5rem; }
+        .modal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem 1.5rem; }
+        .modal-grid .full-width { grid-column: 1 / -1; }
+        .detail-item strong { display: block; color: var(--text-secondary); margin-bottom: 0.25rem; font-size: 0.875rem; text-transform: uppercase; }
+        .detail-item span, .detail-item p { color: var(--text-primary); font-size: 1rem; word-wrap: break-word; margin: 0;}
+        #detail-obs-planificacion, #detail-info-servicio, #detail-equipos-list { white-space: pre-wrap; background-color: var(--bg-primary); padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem; }
+        #modal-chat-history { flex-grow: 1; overflow-y: auto; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.75rem; }
+        .chat-message { max-width: 80%; padding: 0.6rem 0.9rem; border-radius: 12px; font-size: 0.9rem; }
+        .chat-message.ejecutiva { background-color: var(--chat-bubble-ejecutiva); align-self: flex-start; }
+        .chat-message.planificador { background-color: var(--chat-bubble-planificador); align-self: flex-end; }
+        .chat-message .sender { display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 0.25rem; }
+        #modal-chat-form { display: flex; gap: 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+        .modal-footer { margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem; flex-shrink: 0; }
+        .modal-footer button { width: auto; padding: 0.5rem 1.2rem; font-size: 0.9rem; }
+        #equipos-section { grid-column: 1 / -1; border-top: 1px solid var(--border-color); margin-top: 1rem; padding-top: 1rem; }
+        .equipo-form-grid { display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 0.5rem; align-items: flex-end; }
+        .equipo-item { display: flex; justify-content: space-between; align-items: center; background-color: var(--bg-primary); padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem; }
+        .equipo-item span { font-size: 0.85rem; }
+        .remove-equipo-btn { background: var(--danger); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="login-container">
+        <div class="card login-card">
+            <h2>Acceso de Planificador</h2>
+            <form id="login-form">
+                <label for="email">Correo Electrónico</label>
+                <input type="email" id="email" required>
+                <label for="password" style="margin-top: 1rem;">Contraseña</label>
+                <input type="password" id="password" required>
+                <button type="submit" style="margin-top: 1rem;">Acceder</button>
+            </form>
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <div id="main-content" style="display: none;">
+        <div class="container">
+             <header class="header-controls">
+                <h1 id="header-title">Portal del Planificador</h1>
+                <div class="action-buttons">
+                    <button id="logout-button" class="icon-btn logout">Cerrar Sesión</button>
+                    <div class="theme-switch-wrapper">
+                        <label class="theme-switch">
+                            <input type="checkbox" id="theme-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </header>
+            
+            <div class="card">
+                <h2>Gestión de Técnicos</h2>
+                <button id="abrir-modal-tecnico" class="icon-btn" style="width: auto; background-color: var(--success); color: white; border-color: var(--success); margin-bottom: 1rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M14 8a1 1 0 0 1-1 1H9v4a1 1 0 0 1-2 0V9H3a1 1 0 0 1 0-2h4V3a1 1 0 0 1 2 0v4h4a1 1 0 0 1 1 1z"/></svg>
+                    Agregar Nuevo Técnico
+                </button>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Email</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-tecnicos"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                 <h2>Servicios Registrados</h2>
+                 <div class="filtros-container" style="margin-bottom: 1.5rem;">
+                    <div>
+                        <label for="search-input">Buscar Servicio</label>
+                        <input type="search" id="search-input" placeholder="Por Nº Req, NV o Cliente...">
+                    </div>
+                    <div>
+                        <label for="status-filter">Filtrar por Estado</label>
+                        <select id="status-filter">
+                            <option value="Todos">Todos</option>
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="Confirmado">Confirmado</option>
+                            <option value="En Progreso">En Progreso</option>
+                            <option value="Completado">Completado</option>
+                        </select>
+                    </div>
+                 </div>
+                 <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Acciones</th>
+                                <th>Nº Req.</th>
+                                <th>Cliente</th>
+                                <th>Vendedor</th>
+                                <th>F. Sugerida</th>
+                                <th>F. Asignada</th>
+                                <th>Técnico(s)</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-servicios"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="add-tecnico-modal">
+        <div class="modal-container" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 id="modal-tecnico-title">Agregar Nuevo Técnico</h2>
+                <button class="modal-close-btn" data-modal-id="add-tecnico-modal">×</button>
+            </div>
+            <div class="modal-content">
+                <form id="form-tecnico">
+                    <input type="hidden" id="tecnico-id">
+                    <div>
+                        <label for="tecnico-nombre">Nombre Completo</label>
+                        <input type="text" id="tecnico-nombre" required>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <label for="tecnico-email">Correo Electrónico (para iniciar sesión)</label>
+                        <input type="email" id="tecnico-email" required>
+                    </div>
+                    <div id="password-field-container" style="margin-top: 1rem;">
+                        <label for="tecnico-password">Contraseña Temporal</label>
+                        <input type="password" id="tecnico-password" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button id="guardar-tecnico-btn">Guardar Técnico</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="planificacion-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-plan-title">Planificar Servicio</h2>
+                <button class="modal-close-btn" data-modal-id="planificacion-modal">×</button>
+            </div>
+            <div class="modal-content">
+                <form id="form-planificacion">
+                    <input type="hidden" id="plan-service-id">
+                    <div class="modal-grid">
+                        <div>
+                            <label for="plan-fecha-asignada">Fecha Asignada</label>
+                            <input type="date" id="plan-fecha-asignada" required>
+                        </div>
+                        <div>
+                            <label for="plan-estado">Estado del Servicio</label>
+                            <select id="plan-estado" required></select>
+                        </div>
+                        <div>
+                            <label for="plan-hora-traslado">Hora de Traslado</label>
+                            <input type="time" id="plan-hora-traslado">
+                        </div>
+                        <div>
+                            <label for="plan-hora-inicio">Hora de Inicio</label>
+                            <input type="time" id="plan-hora-inicio">
+                        </div>
+                        <div>
+                            <label for="plan-hora-termino">Hora de Término</label>
+                            <input type="time" id="plan-hora-termino">
+                        </div>
+                        <div class="full-width">
+                            <label>Técnicos a Asignar</label>
+                            <div id="plan-tecnicos-list" style="max-height: 150px; overflow-y: auto; background-color: var(--bg-primary); padding: 0.5rem; border-radius: 6px;"></div>
+                        </div>
+                        <div class="full-width">
+                            <label for="plan-observaciones">Observaciones de Planificación</label>
+                            <textarea id="plan-observaciones" rows="3"></textarea>
+                        </div>
+                        <div id="equipos-section">
+                            <label>Equipos Asociados al Servicio</label>
+                            <div id="plan-equipos-list" style="margin-bottom: 1rem;"></div>
+                            <div class="equipo-form-grid">
+                                <input type="text" id="equipo-nombre" placeholder="Nombre Equipo">
+                                <input type="text" id="equipo-marca" placeholder="Marca">
+                                <input type="text" id="equipo-modelo" placeholder="Modelo">
+                                <input type="text" id="equipo-serie" placeholder="Nº Serie">
+                                <button type="button" id="add-equipo-btn" class="icon-btn" style="background-color: var(--success); color: white; border-color: var(--success);">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button id="guardar-plan-btn">Guardar Planificación</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="details-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-details-title">Detalles del Servicio</h2>
+                <button class="modal-close-btn" data-modal-id="details-modal">×</button>
+            </div>
+            <div class="modal-body-container">
+                <div class="modal-content">
+                    <div class="modal-grid">
+                        <div class="detail-item"><strong>Nº Requerimiento:</strong> <span id="detail-req-num"></span></div>
+                        <div class="detail-item"><strong>Nº NV:</strong> <span id="detail-numNV"></span></div>
+                        <div class="detail-item full-width"><strong>Cliente:</strong> <span id="detail-cliente"></span></div>
+                        <div class="detail-item full-width"><strong>Dirección:</strong> <span id="detail-direccion"></span></div>
+                        <div class="detail-item"><strong>Contacto:</strong> <span id="detail-contacto"></span></div>
+                        <div class="detail-item"><strong>Teléfono:</strong> <span id="detail-telefono"></span></div>
+                        <div class="detail-item"><strong>Monto Servicio:</strong> <span id="detail-montoServicio"></span></div>
+                        <div class="detail-item"><strong>Tipo Servicio:</strong> <span id="detail-tipoServicio"></span></div>
+                        <div class="detail-item"><strong>Tiene Repuestos:</strong> <span id="detail-tieneRepuestos"></span></div>
+                        <div class="detail-item"><strong>Repuestos Despachados:</strong> <span id="detail-repDespachados"></span></div>
+                        <div class="detail-item"><strong>Fecha Sugerida:</strong> <span id="detail-fecha-programacion"></span></div>
+                        <div class="detail-item"><strong>Fecha Asignada:</strong> <span id="detail-fecha-asignada"></span></div>
+                        <div class="detail-item"><strong>Técnicos Asignados:</strong> <span id="detail-tecnicos"></span></div>
+                        <div class="detail-item"><strong>Estado:</strong> <span id="detail-estado"></span></div>
+                        <div class="detail-item"><strong>Fecha Creación:</strong> <span id="detail-fecha-solicitud"></span></div>
+                        <div class="detail-item"><strong>Última Edición:</strong> <span id="detail-fecha-edicion"></span></div>
+                        <div class="detail-item full-width">
+                            <strong>Info. del Servicio (Ejecutiva):</strong>
+                            <p id="detail-info-servicio"></p>
+                        </div>
+                        <div class="detail-item full-width">
+                            <strong>Observaciones de Planificación:</strong>
+                            <p id="detail-obs-planificacion"></p>
+                        </div>
+                        <div class="detail-item full-width">
+                            <strong>Equipos Asignados:</strong>
+                            <div id="detail-equipos-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-chat-section">
+                    <h4>Chat del Servicio</h4>
+                    <div id="modal-chat-history"></div>
+                    <form id="modal-chat-form">
+                        <input type="hidden" id="modal-chat-service-id">
+                        <input type="text" id="modal-chat-input" placeholder="Escribe un mensaje..." required>
+                        <button type="submit">Enviar</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+<script>
+    // --- Your web app's Firebase configuration ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAHxnU2r_QdtZTjzC3LL0dYrb9wit6sc0M",
+      authDomain: "maquiform-9347f.firebaseapp.com",
+      projectId: "maquiform-9347f",
+      storageBucket: "maquiform-9347f.firebasestorage.app",
+      messagingSenderId: "408016338170",
+      appId: "1:408016338170:web:7b10d7413cd8fb69d1dd43"
+    };
+
+    // --- Initialize Firebase ---
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    const state = {
+        tecnicosCache: [],
+        serviciosCache: [],
+        currentUser: null,
+        unsubscribeChat: null,
+        equiposTemporales: [],
+    };
+    let unsubscribeTecnicos, unsubscribeServicios;
+
+    const ui = {
+        loginContainer: document.getElementById('login-container'),
+        mainContent: document.getElementById('main-content'),
+        logoutButton: document.getElementById('logout-button'),
+        headerTitle: document.getElementById('header-title'),
+        loginForm: document.getElementById('login-form'),
+        emailInput: document.getElementById('email'),
+        passwordInput: document.getElementById('password'),
+        errorMessage: document.getElementById('error-message'),
+        tablaTecnicosBody: document.getElementById('tabla-tecnicos'),
+        tablaServiciosBody: document.getElementById('tabla-servicios'),
+        abrirModalTecnicoBtn: document.getElementById('abrir-modal-tecnico'),
+        searchInput: document.getElementById('search-input'),
+        statusFilter: document.getElementById('status-filter'),
+        tecnicoModal: { overlay: document.getElementById('add-tecnico-modal'), title: document.getElementById('modal-tecnico-title'), form: document.getElementById('form-tecnico'), idInput: document.getElementById('tecnico-id'), nombreInput: document.getElementById('tecnico-nombre'), emailInput: document.getElementById('tecnico-email'), passwordContainer: document.getElementById('password-field-container'), passwordInput: document.getElementById('tecnico-password'), guardarBtn: document.getElementById('guardar-tecnico-btn') },
+        planModal: { overlay: document.getElementById('planificacion-modal'), title: document.getElementById('modal-plan-title'), form: document.getElementById('form-planificacion'), serviceIdInput: document.getElementById('plan-service-id'), fechaAsignada: document.getElementById('plan-fecha-asignada'), estadoSelect: document.getElementById('plan-estado'), horaTraslado: document.getElementById('plan-hora-traslado'), horaInicio: document.getElementById('plan-hora-inicio'), horaTermino: document.getElementById('plan-hora-termino'), tecnicosList: document.getElementById('plan-tecnicos-list'), observaciones: document.getElementById('plan-observaciones'), guardarBtn: document.getElementById('guardar-plan-btn'), equiposList: document.getElementById('plan-equipos-list'), addEquipoBtn: document.getElementById('add-equipo-btn'), equipoNombre: document.getElementById('equipo-nombre'), equipoMarca: document.getElementById('equipo-marca'), equipoModelo: document.getElementById('equipo-modelo'), equipoSerie: document.getElementById('equipo-serie') },
+        detailsModal: { overlay: document.getElementById('details-modal'), title: document.getElementById('modal-details-title'), reqNum: document.getElementById('detail-req-num'), numNV: document.getElementById('detail-numNV'), cliente: document.getElementById('detail-cliente'), direccion: document.getElementById('detail-direccion'), contacto: document.getElementById('detail-contacto'), telefono: document.getElementById('detail-telefono'), montoServicio: document.getElementById('detail-montoServicio'), tipoServicio: document.getElementById('detail-tipoServicio'), tieneRepuestos: document.getElementById('detail-tieneRepuestos'), repDespachados: document.getElementById('detail-repDespachados'), fechaProgramacion: document.getElementById('detail-fecha-programacion'), fechaAsignada: document.getElementById('detail-fecha-asignada'), tecnicos: document.getElementById('detail-tecnicos'), estado: document.getElementById('detail-estado'), fechaSolicitud: document.getElementById('detail-fecha-solicitud'), fechaEdicion: document.getElementById('detail-fecha-edicion'), infoServicio: document.getElementById('detail-info-servicio'), obsPlanificacion: document.getElementById('detail-obs-planificacion'), equiposList: document.getElementById('detail-equipos-list'), chatHistory: document.getElementById('modal-chat-history'), chatForm: document.getElementById('modal-chat-form'), chatInput: document.getElementById('modal-chat-input'), chatServiceId: document.getElementById('modal-chat-service-id') },
+        themeToggle: document.getElementById('theme-toggle'),
+        modalCloseBtns: document.querySelectorAll('.modal-close-btn'),
+    };
+
+    // --- LÓGICA DE AUTENTICACIÓN ---
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            state.currentUser = user;
+            ui.loginContainer.style.display = 'none';
+            ui.mainContent.style.display = 'block';
+            ui.headerTitle.textContent = `Planificador: ${user.email.split('@')[0]}`;
+            listenToTecnicos();
+            listenToServicios();
+        } else {
+            state.currentUser = null;
+            ui.loginContainer.style.display = 'flex';
+            ui.mainContent.style.display = 'none';
+            if (unsubscribeTecnicos) unsubscribeTecnicos();
+            if (unsubscribeServicios) unsubscribeServicios();
+            if (state.unsubscribeChat) state.unsubscribeChat();
+        }
+    });
+
+    ui.loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = ui.emailInput.value;
+        const password = ui.passwordInput.value;
+        auth.signInWithEmailAndPassword(email, password).catch(err => {
+            ui.errorMessage.textContent = 'Error: Credenciales incorrectas.';
+            ui.errorMessage.style.display = 'block';
+        });
+    });
+    ui.logoutButton.addEventListener('click', () => auth.signOut());
+
+    // --- GESTIÓN DE TÉCNICOS ---
+    function listenToTecnicos() {
+        if (unsubscribeTecnicos) unsubscribeTecnicos();
+        unsubscribeTecnicos = db.collection('tecnicos').orderBy('nombre').onSnapshot(snapshot => {
+            state.tecnicosCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderTecnicosPanel();
+        }, error => console.error("Error al escuchar técnicos:", error));
+    }
+
+    function renderTecnicosPanel() {
+        ui.tablaTecnicosBody.innerHTML = '';
+        if (state.tecnicosCache.length === 0) {
+            ui.tablaTecnicosBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No hay técnicos registrados.</td></tr>`;
+            return;
+        }
+        state.tecnicosCache.forEach(tecnico => {
+            const tr = document.createElement('tr');
+            const statusClass = tecnico.activo ? 'status-badge status-Confirmado' : 'status-badge status-Pendiente';
+            const statusText = tecnico.activo ? 'Activo' : 'Inactivo';
+            const toggleButtonText = tecnico.activo ? 'Desactivar' : 'Activar';
+            tr.innerHTML = `<td>${tecnico.nombre}</td><td>${tecnico.email || 'N/A'}</td><td><span class="${statusClass}">${statusText}</span></td><td class="action-cell"><button class="btn-edit-tecnico" data-id="${tecnico.id}">Editar</button><button class="btn-toggle-status" data-id="${tecnico.id}" data-status="${tecnico.activo}">${toggleButtonText}</button></td>`;
+            ui.tablaTecnicosBody.appendChild(tr);
+        });
+    }
+
+    function openTecnicoModal(tecnico = null) {
+        ui.tecnicoModal.form.reset();
+        if (tecnico) {
+            ui.tecnicoModal.title.textContent = 'Editar Técnico';
+            ui.tecnicoModal.idInput.value = tecnico.id;
+            ui.tecnicoModal.nombreInput.value = tecnico.nombre;
+            ui.tecnicoModal.emailInput.value = tecnico.email;
+            ui.tecnicoModal.emailInput.readOnly = true;
+            ui.tecnicoModal.passwordContainer.style.display = 'none';
+        } else {
+            ui.tecnicoModal.title.textContent = 'Agregar Nuevo Técnico';
+            ui.tecnicoModal.idInput.value = '';
+            ui.tecnicoModal.emailInput.readOnly = false;
+            ui.tecnicoModal.passwordContainer.style.display = 'block';
+        }
+        ui.tecnicoModal.overlay.classList.add('visible');
+    }
+
+    async function guardarTecnico(e) {
+        e.preventDefault();
+        ui.tecnicoModal.guardarBtn.disabled = true;
+        const id = ui.tecnicoModal.idInput.value;
+        const nombre = ui.tecnicoModal.nombreInput.value;
+        const email = ui.tecnicoModal.emailInput.value;
+        
+        let secondaryApp;
+        try {
+            if (id) {
+                await db.collection('tecnicos').doc(id).update({ nombre });
+                alert('Técnico actualizado.');
+            } else {
+                const password = ui.tecnicoModal.passwordInput.value;
+                if (password.length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres.");
+                secondaryApp = firebase.initializeApp(firebaseConfig, 'secondary');
+                const secondaryAuth = secondaryApp.auth();
+                const userCredential = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+                await userCredential.user.updateProfile({ displayName: nombre });
+                await db.collection('tecnicos').add({ nombre, email, activo: true, uid: userCredential.user.uid });
+                await secondaryAuth.signOut();
+                alert(`Técnico ${nombre} creado con éxito.`);
+            }
+            closeModal('add-tecnico-modal');
+        } catch (error) {
+            console.error("Error guardando técnico:", error);
+            alert(`Error: ${error.message}`);
+        } finally {
+            if (secondaryApp) await secondaryApp.delete();
+            ui.tecnicoModal.guardarBtn.disabled = false;
+        }
+    }
+
+    async function toggleTecnicoStatus(id, currentStatus) {
+        if (!id) return;
+        const newStatus = !JSON.parse(currentStatus);
+        try {
+            await db.collection('tecnicos').doc(id).update({ activo: newStatus });
+        } catch (error) {
+            console.error("Error al cambiar estado:", error);
+            alert("No se pudo actualizar el estado del técnico.");
+        }
+    }
+
+    // --- GESTIÓN DE SERVICIOS ---
+    function listenToServicios() {
+        if (unsubscribeServicios) unsubscribeServicios();
+        unsubscribeServicios = db.collection('servicios').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+            state.serviciosCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderServiciosTable();
+        }, error => console.error("Error escuchando servicios:", error));
+    }
+
+    function renderServiciosTable() {
+        const searchTerm = ui.searchInput.value.toLowerCase().trim();
+        const statusFilter = ui.statusFilter.value;
+        const filteredServices = state.serviciosCache.filter(s =>
+            (!searchTerm || (s.numRequerimiento && s.numRequerimiento.toLowerCase().includes(searchTerm)) || (s.numNV && s.numNV.toLowerCase().includes(searchTerm)) || (s.cliente && s.cliente.toLowerCase().includes(searchTerm))) &&
+            (statusFilter === 'Todos' || s.estado === statusFilter)
+        );
+        ui.tablaServiciosBody.innerHTML = '';
+        if (filteredServices.length === 0) {
+            ui.tablaServiciosBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No se encontraron servicios con los filtros aplicados.</td></tr>`;
+            return;
+        }
+        filteredServices.forEach(s => {
+            const tr = document.createElement('tr');
+            const tecnicosAsignados = Array.isArray(s.tecnicos) ? s.tecnicos.join(', ') : (s.tecnicos || 'N/A');
+            const isCompleted = s.estado === 'Completado';
+            tr.innerHTML = `<td class="action-cell"><button class="btn-plan" data-id="${s.id}" ${isCompleted ? 'disabled' : ''}>Planificar</button><button class="btn-details" data-id="${s.id}">Ver Detalles</button></td><td>${s.numRequerimiento || 'N/A'}</td><td>${s.cliente || 'N/A'}</td><td>${s.vendedor ? s.vendedor.split('@')[0] : 'N/A'}</td><td>${formatDateString(s.fechaProgramacion)}</td><td>${formatDateString(s.fechaAsignada)}</td><td>${tecnicosAsignados}</td><td><span class="status-badge status-${(s.estado || '').replace(/\s+/g, '-')}">${s.estado || 'N/A'}</span></td>`;
+            ui.tablaServiciosBody.appendChild(tr);
+        });
+    }
+
+    function openPlanModal(service) {
+        ui.planModal.form.reset();
+        populateEstadoOptions(ui.planModal.estadoSelect);
+        ui.planModal.serviceIdInput.value = service.id;
+        ui.planModal.title.textContent = `Planificar Req #${service.numRequerimiento} - ${service.cliente}`;
+        ui.planModal.fechaAsignada.value = service.fechaAsignada || service.fechaProgramacion || '';
+        ui.planModal.estadoSelect.value = service.estado || 'Pendiente';
+        ui.planModal.horaTraslado.value = service.horaTraslado || '';
+        ui.planModal.horaInicio.value = service.horaInicio || '';
+        ui.planModal.horaTermino.value = service.horaTermino || '';
+        ui.planModal.observaciones.value = service.observacionesPlanificacion || '';
+        
+        const tecnicosActivos = state.tecnicosCache.filter(t => t.activo);
+        ui.planModal.tecnicosList.innerHTML = '';
+        tecnicosActivos.forEach(tec => {
+            const isChecked = Array.isArray(service.tecnicos) && service.tecnicos.includes(tec.nombre);
+            ui.planModal.tecnicosList.innerHTML += `<div><label style="display: flex; align-items: center; gap: 0.5rem; font-weight: normal;"><input type="checkbox" value="${tec.nombre}" ${isChecked ? 'checked' : ''}> ${tec.nombre}</label></div>`;
+        });
+
+        state.equiposTemporales = service.equipos || [];
+        renderEquiposList();
+
+        ui.planModal.overlay.classList.add('visible');
+    }
+
+    async function guardarPlanificacion(e) {
+        e.preventDefault();
+        ui.planModal.guardarBtn.disabled = true;
+        const serviceId = ui.planModal.serviceIdInput.value;
+        const assignedTecnicos = Array.from(ui.planModal.tecnicosList.querySelectorAll('input:checked')).map(input => input.value);
+        const dataToUpdate = {
+            fechaAsignada: ui.planModal.fechaAsignada.value,
+            estado: ui.planModal.estadoSelect.value,
+            horaTraslado: ui.planModal.horaTraslado.value,
+            horaInicio: ui.planModal.horaInicio.value,
+            horaTermino: ui.planModal.horaTermino.value,
+            tecnicos: assignedTecnicos,
+            observacionesPlanificacion: ui.planModal.observaciones.value,
+            equipos: state.equiposTemporales, // Guardar la lista de equipos
+            fechaEdicion: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        try {
+            await db.collection('servicios').doc(serviceId).update(dataToUpdate);
+            alert('Planificación guardada.');
+            closeModal('planificacion-modal');
+        } catch (error) {
+            console.error('Error guardando la planificación: ', error);
+            alert('No se pudo guardar.');
+        } finally {
+            ui.planModal.guardarBtn.disabled = false;
+        }
+    }
+
+    // --- GESTIÓN DE EQUIPOS ---
+    function renderEquiposList() {
+        ui.planModal.equiposList.innerHTML = '';
+        if (state.equiposTemporales.length === 0) {
+            ui.planModal.equiposList.innerHTML = '<p>No hay equipos asignados.</p>';
+            return;
+        }
+        state.equiposTemporales.forEach((equipo, index) => {
+            const equipoDiv = document.createElement('div');
+            equipoDiv.className = 'equipo-item';
+            equipoDiv.innerHTML = `
+                <span>${equipo.nombre} (${equipo.serie || 'S/N'})</span>
+                <button type="button" class="remove-equipo-btn" data-index="${index}">-</button>
+            `;
+            ui.planModal.equiposList.appendChild(equipoDiv);
+        });
+    }
+
+    function addEquipo() {
+        const nombre = ui.planModal.equipoNombre.value.trim();
+        if (!nombre) {
+            alert('El nombre del equipo es obligatorio.');
+            return;
+        }
+        state.equiposTemporales.push({
+            nombre: nombre,
+            marca: ui.planModal.equipoMarca.value.trim(),
+            modelo: ui.planModal.equipoModelo.value.trim(),
+            serie: ui.planModal.equipoSerie.value.trim()
+        });
+        renderEquiposList();
+        // Limpiar inputs
+        ui.planModal.equipoNombre.value = '';
+        ui.planModal.equipoMarca.value = '';
+        ui.planModal.equipoModelo.value = '';
+        ui.planModal.equipoSerie.value = '';
+    }
+
+    // --- GESTIÓN DE DETALLES Y CHAT ---
+    function openDetailsModal(service) {
+        const m = ui.detailsModal;
+        m.title.textContent = `Detalles: Req #${service.numRequerimiento || 'N/A'}`;
+        m.reqNum.textContent = service.numRequerimiento || 'N/A'; m.numNV.textContent = service.numNV || 'N/A'; m.cliente.textContent = service.cliente || 'N/A'; m.direccion.textContent = service.direccion || 'N/A'; m.contacto.textContent = service.nomContacto || 'N/A'; m.telefono.textContent = service.numContacto || 'N/A'; m.montoServicio.textContent = displayCurrency(service.montoServicio); m.tipoServicio.textContent = service.tipoServicio || 'N/A'; m.tieneRepuestos.textContent = service.tieneRepuestos || 'N/A'; m.repDespachados.textContent = service.repuestosDespachados || 'N/A'; m.fechaProgramacion.textContent = formatDateString(service.fechaProgramacion); m.fechaAsignada.textContent = formatDateString(service.fechaAsignada); m.tecnicos.textContent = Array.isArray(service.tecnicos) ? service.tecnicos.join(', ') : (service.tecnicos || 'Sin Asignar'); m.estado.textContent = service.estado || 'N/A'; m.fechaSolicitud.textContent = formatTimestamp(service.timestamp); m.fechaEdicion.textContent = formatTimestamp(service.fechaEdicion); m.infoServicio.textContent = service.infoServicio || 'Sin información.'; m.obsPlanificacion.textContent = service.observacionesPlanificacion || 'Sin observaciones.';
+        
+        m.equiposList.innerHTML = '';
+        if (service.equipos && service.equipos.length > 0) {
+            const ul = document.createElement('ul');
+            service.equipos.forEach(eq => {
+                const li = document.createElement('li');
+                li.textContent = `${eq.nombre} | Marca: ${eq.marca || 'N/A'} | Modelo: ${eq.modelo || 'N/A'} | Serie: ${eq.serie || 'N/A'}`;
+                ul.appendChild(li);
+            });
+            m.equiposList.appendChild(ul);
+        } else {
+            m.equiposList.textContent = 'No hay equipos asignados.';
+        }
+
+        m.chatServiceId.value = service.id;
+        listenToChat(service.id);
+        m.overlay.classList.add('visible');
+    }
+
+    function listenToChat(serviceId) {
+        if (state.unsubscribeChat) state.unsubscribeChat();
+        state.unsubscribeChat = db.collection('servicios').doc(serviceId).collection('chat').orderBy('timestamp').onSnapshot(snapshot => {
+            const chatHistory = ui.detailsModal.chatHistory;
+            chatHistory.innerHTML = '';
+            snapshot.forEach(doc => {
+                const msg = doc.data();
+                const msgDiv = document.createElement('div');
+                msgDiv.classList.add('chat-message', msg.senderType);
+                msgDiv.innerHTML = `<span class="sender">${msg.senderName}</span>${msg.text}`;
+                chatHistory.appendChild(msgDiv);
+            });
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        });
+    }
+
+    async function handleChatSubmit(e) {
+        e.preventDefault();
+        const serviceId = ui.detailsModal.chatServiceId.value;
+        const text = ui.detailsModal.chatInput.value.trim();
+        if (!text || !serviceId || !state.currentUser) return;
+        const chatData = {
+            text,
+            senderId: state.currentUser.uid,
+            senderName: "Planificador",
+            senderType: "planificador",
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        try {
+            await db.collection('servicios').doc(serviceId).collection('chat').add(chatData);
+            ui.detailsModal.chatForm.reset();
+        } catch (error) {
+            console.error("Error enviando mensaje:", error);
+        }
+    }
+
+    // --- EVENT LISTENERS ---
+    ui.abrirModalTecnicoBtn.addEventListener('click', () => openTecnicoModal());
+    ui.tecnicoModal.guardarBtn.addEventListener('click', guardarTecnico);
+    ui.planModal.guardarBtn.addEventListener('click', guardarPlanificacion);
+    ui.planModal.addEquipoBtn.addEventListener('click', addEquipo);
+    ui.planModal.equiposList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-equipo-btn')) {
+            const index = e.target.dataset.index;
+            state.equiposTemporales.splice(index, 1);
+            renderEquiposList();
+        }
+    });
+    ui.detailsModal.chatForm.addEventListener('submit', handleChatSubmit);
+    [ui.searchInput, ui.statusFilter].forEach(el => el.addEventListener('input', renderServiciosTable));
+    ui.tablaTecnicosBody.addEventListener('click', (e) => { const target = e.target.closest('button'); if (!target) return; const id = target.dataset.id; if (target.classList.contains('btn-edit-tecnico')) { const tecnico = state.tecnicosCache.find(t => t.id === id); if (tecnico) openTecnicoModal(tecnico); } else if (target.classList.contains('btn-toggle-status')) { toggleTecnicoStatus(id, target.dataset.status); } });
+    ui.tablaServiciosBody.addEventListener('click', (e) => { const target = e.target.closest('button'); if (!target) return; const serviceId = target.dataset.id; const service = state.serviciosCache.find(s => s.id === serviceId); if (!service) return; if (target.classList.contains('btn-plan')) openPlanModal(service); else if (target.classList.contains('btn-details')) openDetailsModal(service); });
+    
+    function closeModal(modalId) { const modal = document.getElementById(modalId); if (modal) modal.classList.remove('visible'); if (modalId === 'details-modal' && state.unsubscribeChat) { state.unsubscribeChat(); state.unsubscribeChat = null; } }
+    ui.modalCloseBtns.forEach(btn => btn.addEventListener('click', (e) => closeModal(e.target.dataset.modalId)));
+
+    // --- HELPERS ---
+    function formatDateString(dateStr) { if (!dateStr) return 'N/A'; const parts = dateStr.split('-'); if (parts.length !== 3) return dateStr; return `${parts[2]}/${parts[1]}/${parts[0]}`; }
+    function formatTimestamp(ts) { if (!ts || !ts.toDate) return 'N/A'; const d = ts.toDate(); return d.toLocaleString('es-CL'); }
+    function displayCurrency(value) { if (value === undefined || value === null) return 'N/A'; const numericValue = parseInt(String(value).replace(/\D/g, ''), 10); if (isNaN(numericValue)) return 'N/A'; return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(numericValue); }
+    function populateEstadoOptions(selectElement) { const estados = ["Pendiente", "Confirmado", "Esperando Repuestos", "En Progreso", "Completado", "Otros"]; selectElement.innerHTML = ''; estados.forEach(e => selectElement.add(new Option(e, e))); }
+
+    // --- Lógica de Tema ---
+    function applyTheme(isDark) { document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light'); localStorage.setItem('theme', isDark ? 'dark' : 'light'); ui.themeToggle.checked = isDark; }
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    applyTheme(savedTheme === 'dark');
+    ui.themeToggle.addEventListener('change', (e) => applyTheme(e.target.checked));
+
+</script>
+</body>
+</html>

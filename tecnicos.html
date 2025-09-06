@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Portal del Técnico</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+
+    <style>
+        :root {
+            --font-main: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            --transition-speed: 0.3s;
+        }
+        [data-theme="dark"] {
+            --bg-primary: #1a1b26; --bg-secondary: #24283b; --bg-tertiary: #414868;
+            --text-primary: #c0caf5; --text-secondary: #a9b1d6; --accent: #7dcfff;
+            --accent-glow: rgba(125, 207, 255, 0.2); --border-color: #3b3f51;
+            --success: #9ece6a; --pending: #e0af68; --danger: #f7768e; 
+            --in-progress: #7aa2f7; --completed: var(--success);
+            --modal-bg: rgba(26, 27, 38, 0.98);
+        }
+        [data-theme="light"] {
+            --bg-primary: #f0f2f5; --bg-secondary: #ffffff; --bg-tertiary: #e9ecef;
+            --text-primary: #212529; --text-secondary: #495057; --accent: #007bff;
+            --accent-glow: rgba(0, 123, 255, 0.15); --border-color: #dee2e6;
+            --success: #28a745; --pending: #ffc107; --danger: #dc3545; 
+            --in-progress: #17a2b8; --completed: var(--success);
+            --modal-bg: rgba(255, 255, 255, 0.98);
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: var(--font-main); margin: 0; background-color: var(--bg-primary); color: var(--text-primary); font-size: 16px; }
+        .container { width: 100%; max-width: 800px; margin: 0 auto; padding: 0.8rem; }
+        #login-view { display: flex; align-items: center; justify-content: center; height: 100vh; padding: 1rem; }
+        .login-card { background: var(--bg-secondary); border-radius: 12px; padding: 2rem 1.5rem; width: 100%; max-width: 400px; border: 1px solid var(--border-color); }
+        .login-card h2 { text-align: center; margin-top: 0; }
+        input, textarea, select, button { font-family: var(--font-main); color: var(--text-primary); width: 100%; padding: 0.8rem; font-size: 1rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-tertiary); margin-bottom: 1rem; }
+        .login-card button { border: none; background: var(--accent); color: var(--bg-secondary); cursor: pointer; font-weight: 600; }
+        #error-message { color: var(--danger); text-align: center; margin-top: 1rem; min-height: 1.2em; }
+        
+        #app-view header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background-color: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+        #app-view header h1 { font-size: 1.1rem; margin: 0; }
+        #logout-button { background: var(--bg-tertiary); color: var(--text-primary); border: none; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; margin: 0; }
+
+        #date-nav { display: flex; justify-content: space-between; align-items: center; padding: 1rem; text-align: center; }
+        #date-nav button { background: none; border: none; color: var(--accent); font-size: 1.5rem; font-weight: bold; cursor: pointer; margin: 0; }
+        #current-date-display { font-size: 1.2rem; font-weight: 600; }
+
+        .service-card { background: var(--bg-secondary); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; border-left: 5px solid; display: flex; align-items: center; gap: 1rem; cursor: pointer; }
+        .service-card.status-Confirmado { border-left-color: var(--accent); }
+        .service-card.status-En-Traslado { border-left-color: var(--pending); }
+        .service-card.status-En-Progreso { border-left-color: var(--in-progress); }
+        .service-card.status-Completado { border-left-color: var(--completed); }
+        .service-card-time { font-size: 1rem; font-weight: 600; min-width: 70px; text-align: center; }
+        .service-card-details h3 { font-size: 1.1rem; margin: 0 0 0.25rem 0; }
+        .service-card-details p { margin: 0; color: var(--text-secondary); }
+        #loading-indicator, #no-services-message { text-align: center; padding: 3rem 1rem; color: var(--text-secondary); font-size: 1.1rem; }
+        
+        /* --- Modal de Servicio y Cámara --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-bg); z-index: 1000; overflow-y: auto; display: none; }
+        .modal-container { padding: 1rem; max-width: 800px; margin: 1rem auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--accent); }
+        .modal-close-btn { background: none; border: none; font-size: 2rem; color: var(--text-secondary); cursor: pointer; padding: 0; margin: 0; }
+        .modal-section { background: var(--bg-secondary); padding: 1rem; border-radius: 12px; margin-bottom: 1rem; }
+        .modal-section h3 { margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; font-size: 1.1rem; color: var(--text-secondary); }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .detail-item strong { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem; }
+        .detail-item span { font-size: 1rem; }
+        .full-width { grid-column: 1 / -1; }
+        .action-btn-group, .photo-btn-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; }
+        .action-btn-group button, .photo-btn-group button { font-weight: 600; margin-bottom: 0; }
+        .status-btn.en-traslado { background: var(--pending); }
+        .status-btn.en-progreso { background: var(--in-progress); }
+        .status-btn.finalizar { background: var(--danger); color: var(--bg-secondary); }
+        #signature-pad { border: 1px solid var(--border-color); border-radius: 8px; cursor: crosshair; max-width: 100%; }
+        #clear-signature-btn { margin-top: 0.5rem; background: var(--bg-tertiary); }
+        .photo-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; margin-top: 1rem; }
+        .photo-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; }
+        #final-save-btn { background: var(--success); color: var(--bg-secondary); font-size: 1.2rem; padding: 1rem; }
+        
+        #camera-modal { align-items: center; justify-content: center; background-color: rgba(0,0,0,0.9); }
+        #camera-view { max-width: 100%; border-radius: 12px; }
+        #capture-btn { font-size: 1.2rem; padding: 1rem; background-color: var(--accent); color: var(--bg-secondary); position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); width: auto; border-radius: 50%; height: 70px; width: 70px; border: 4px solid var(--bg-secondary); }
+    </style>
+</head>
+<body>
+
+    <div id="login-view">
+        <div class="login-card">
+            <h2>Acceso Técnico</h2>
+            <form id="login-form">
+                <input type="email" id="email" placeholder="Correo Electrónico" required>
+                <input type="password" id="password" placeholder="Contraseña" required>
+                <button type="submit">Ingresar</button>
+            </form>
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <div id="app-view" style="display: none;">
+        <header>
+            <h1 id="welcome-message">Portal Técnico</h1>
+            <button id="logout-button">Salir</button>
+        </header>
+        <div class="container">
+            <div id="date-nav">
+                <button id="prev-day-btn">‹</button>
+                <h2 id="current-date-display">Cargando...</h2>
+                <button id="next-day-btn">›</button>
+            </div>
+            <div id="agenda-list">
+                <div id="loading-indicator">Cargando agenda...</div>
+                <div id="no-services-message" style="display: none;">No hay servicios para esta fecha.</div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="service-modal" class="modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-title">Detalles del Servicio</h2>
+                <button id="modal-close-btn" class="modal-close-btn">×</button>
+            </div>
+            
+            <div class="modal-section">
+                <h3>Información General</h3>
+                <div class="detail-grid">
+                    <div class="detail-item full-width"><strong>Cliente:</strong> <span id="modal-cliente"></span></div>
+                    <div class="detail-item"><strong>Req Nº:</strong> <span id="modal-req"></span></div>
+                    <div class="detail-item"><strong>Hora:</strong> <span id="modal-hora"></span></div>
+                    <div class="detail-item full-width">
+                        <strong>Dirección:</strong> <span id="modal-direccion"></span>
+                        <a id="open-maps-btn" href="#" target="_blank" style="display: block; margin-top: 0.5rem;">Abrir en Google Maps</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-section">
+                <h3>Control de Estado</h3>
+                <div class="action-btn-group">
+                    <button class="status-btn en-traslado" data-status="En Traslado">Iniciar Traslado</button>
+                    <button class="status-btn en-progreso" data-status="En Progreso">Iniciar Servicio</button>
+                    <button class="status-btn finalizar" data-status="Finalizado">Finalizar Servicio</button>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <h3>Equipos Asignados</h3>
+                <div id="modal-equipos-list"></div>
+            </div>
+            
+            <div class="modal-section">
+                <h3>Reporte de Servicio</h3>
+                <label for="trabajo-realizado">Trabajo Realizado</label>
+                <textarea id="trabajo-realizado" rows="5"></textarea>
+                <label for="observaciones">Observaciones y Recomendaciones</label>
+                <textarea id="observaciones" rows="3"></textarea>
+            </div>
+
+            <div class="modal-section">
+                <h3>Conformidad del Cliente</h3>
+                <label for="nombre-cliente-firma">Nombre de quien recibe</label>
+                <input type="text" id="nombre-cliente-firma">
+                <label>Firma del Cliente</label>
+                <canvas id="signature-pad" width="400" height="200"></canvas>
+                <button id="clear-signature-btn">Limpiar Firma</button>
+            </div>
+            
+            <div class="modal-section">
+                <h3>Registro Fotográfico</h3>
+                <div class="photo-btn-group">
+                    <button id="open-camera-btn">Tomar Foto con Cámara</button>
+                    <label for="photo-upload" class="button-like-label" style="text-align: center; padding: 0.8rem; background: var(--bg-tertiary); border-radius: 8px; cursor: pointer;">Seleccionar de Galería</label>
+                    <input type="file" id="photo-upload" accept="image/*" multiple style="display: none;">
+                </div>
+                <div class="photo-gallery" id="photo-gallery"></div>
+            </div>
+            
+            <button id="final-save-btn">Guardar y Completar Servicio</button>
+        </div>
+    </div>
+
+    <div id="camera-modal" class="modal-overlay">
+        <video id="camera-view" autoplay playsinline></video>
+        <button id="capture-btn">Capturar</button>
+        <button id="camera-close-btn" class="modal-close-btn" style="position: absolute; top: 1rem; right: 1rem;">×</button>
+    </div>
+
+
+<script>
+    // --- CONFIGURACIÓN DE FIREBASE ---
+    const firebaseConfigTest = {
+      apiKey: "AIzaSyAHxnU2r_QdtZTjzC3LL0dYrb9wit6sc0M",
+      authDomain: "maquiform-9347f.firebaseapp.com",
+      projectId: "maquiform-9347f",
+      storageBucket: "maquiform-9347f.appspot.com",
+      messagingSenderId: "408016338170",
+      appId: "1:408016338170:web:7b10d7413cd8fb69d1dd43"
+    };
+
+    firebase.initializeApp(firebaseConfigTest);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+
+    // --- ESTADO GLOBAL DE LA APP ---
+    const state = {
+        currentUser: null,
+        currentDate: new Date(),
+        servicesCache: [],
+        unsubscribeListener: null,
+        activeServiceId: null,
+        filesToUpload: [],
+        cameraStream: null,
+    };
+
+    // --- SELECTORES DE UI ---
+    const ui = {
+        loginView: document.getElementById('login-view'),
+        appView: document.getElementById('app-view'),
+        loginForm: document.getElementById('login-form'),
+        emailInput: document.getElementById('email'),
+        passwordInput: document.getElementById('password'),
+        errorMessage: document.getElementById('error-message'),
+        welcomeMessage: document.getElementById('welcome-message'),
+        logoutButton: document.getElementById('logout-button'),
+        currentDateDisplay: document.getElementById('current-date-display'),
+        prevDayBtn: document.getElementById('prev-day-btn'),
+        nextDayBtn: document.getElementById('next-day-btn'),
+        agendaList: document.getElementById('agenda-list'),
+        loadingIndicator: document.getElementById('loading-indicator'),
+        noServicesMessage: document.getElementById('no-services-message'),
+        serviceModal: document.getElementById('service-modal'),
+        modalCloseBtn: document.getElementById('modal-close-btn'),
+        modalTitle: document.getElementById('modal-title'),
+        modalCliente: document.getElementById('modal-cliente'),
+        modalReq: document.getElementById('modal-req'),
+        modalHora: document.getElementById('modal-hora'),
+        modalDireccion: document.getElementById('modal-direccion'),
+        openMapsBtn: document.getElementById('open-maps-btn'),
+        statusBtnGroup: document.querySelector('.action-btn-group'),
+        modalEquiposList: document.getElementById('modal-equipos-list'),
+        trabajoRealizado: document.getElementById('trabajo-realizado'),
+        observaciones: document.getElementById('observaciones'),
+        nombreClienteFirma: document.getElementById('nombre-cliente-firma'),
+        signaturePad: document.getElementById('signature-pad'),
+        clearSignatureBtn: document.getElementById('clear-signature-btn'),
+        photoUpload: document.getElementById('photo-upload'),
+        photoGallery: document.getElementById('photo-gallery'),
+        finalSaveBtn: document.getElementById('final-save-btn'),
+        openCameraBtn: document.getElementById('open-camera-btn'),
+        cameraModal: document.getElementById('camera-modal'),
+        cameraView: document.getElementById('camera-view'),
+        captureBtn: document.getElementById('capture-btn'),
+        cameraCloseBtn: document.getElementById('camera-close-btn'),
+    };
+    
+    // --- LÓGICA DE FIRMA DIGITAL ---
+    const canvas = ui.signaturePad;
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    function resizeCanvas() { const ratio = Math.max(window.devicePixelRatio || 1, 1); canvas.width = canvas.offsetWidth * ratio; canvas.height = canvas.offsetHeight * ratio; canvas.getContext("2d").scale(ratio, ratio); ctx.strokeStyle = (document.documentElement.getAttribute('data-theme') === 'dark' ? '#c0caf5' : '#212529'); ctx.lineWidth = 2; }
+    window.addEventListener("resize", resizeCanvas);
+    function getMousePos(canvas, evt) { const rect = canvas.getBoundingClientRect(); return { x: evt.clientX - rect.left, y: evt.clientY - rect.top }; }
+    canvas.addEventListener('mousedown', (e) => { drawing = true; const pos = getMousePos(canvas, e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y); });
+    canvas.addEventListener('mouseup', () => { drawing = false; });
+    canvas.addEventListener('mousemove', (e) => { if (!drawing) return; const pos = getMousePos(canvas, e); ctx.lineTo(pos.x, pos.y); ctx.stroke(); });
+    ui.clearSignatureBtn.addEventListener('click', (e) => { e.preventDefault(); ctx.clearRect(0, 0, canvas.width, canvas.height); });
+
+    // --- LÓGICA DE AUTENTICACIÓN ---
+    auth.onAuthStateChanged(user => { if (user) { state.currentUser = user; setupApp(user); } else { state.currentUser = null; tearDownApp(); } });
+    ui.loginForm.addEventListener('submit', (e) => { e.preventDefault(); auth.signInWithEmailAndPassword(ui.emailInput.value, ui.passwordInput.value).catch(error => { ui.errorMessage.textContent = "Error: Credenciales incorrectas."; }); });
+    ui.logoutButton.addEventListener('click', () => auth.signOut());
+
+    // --- FUNCIONES PRINCIPALES DE LA APP ---
+    function setupApp(user) {
+        ui.loginView.style.display = 'none';
+        ui.appView.style.display = 'block';
+        const userName = user.displayName || user.email.split('@')[0];
+        ui.welcomeMessage.textContent = `Hola, ${userName}`;
+        ui.prevDayBtn.addEventListener('click', () => changeDate(-1));
+        ui.nextDayBtn.addEventListener('click', () => changeDate(1));
+        updateDateDisplay();
+        listenToAgenda();
+        setupModalListeners();
+    }
+    
+    function tearDownApp() {
+        if (state.unsubscribeListener) state.unsubscribeListener();
+        if (state.cameraStream) { state.cameraStream.getTracks().forEach(track => track.stop()); }
+        ui.loginView.style.display = 'flex';
+        ui.appView.style.display = 'none';
+    }
+
+    function changeDate(days) {
+        state.currentDate.setDate(state.currentDate.getDate() + days);
+        updateDateDisplay();
+        listenToAgenda();
+    }
+
+    function updateDateDisplay() {
+        const today = new Date();
+        const isToday = state.currentDate.toDateString() === today.toDateString();
+        ui.currentDateDisplay.textContent = isToday ? `Hoy, ${state.currentDate.toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}` : state.currentDate.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+
+    // ===== LÓGICA DE CARGA DE AGENDA (CORREGIDA) =====
+    function listenToAgenda() {
+        if (state.unsubscribeListener) state.unsubscribeListener();
+        ui.loadingIndicator.style.display = 'block';
+        ui.noServicesMessage.style.display = 'none';
+        ui.agendaList.innerHTML = '';
+        const dateString = getYYYYMMDD(state.currentDate);
+        const technicianName = state.currentUser.displayName;
+
+        if (!technicianName) {
+            console.error("El usuario no tiene un `displayName`.");
+            ui.loadingIndicator.innerHTML = "Error: Tu usuario no tiene un 'Nombre de Muestra' configurado en Firebase. Contacta al administrador.";
+            return;
+        }
+
+        state.unsubscribeListener = db.collection('servicios')
+            .where('fechaAsignada', '==', dateString)
+            .where('tecnicos', 'array-contains', technicianName)
+            .orderBy('horaInicio', 'asc')
+            .onSnapshot(snapshot => {
+                ui.loadingIndicator.style.display = 'none';
+                state.servicesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderAgenda();
+            }, error => {
+                console.error("Error al cargar la agenda: ", error);
+                ui.loadingIndicator.textContent = "Error al cargar datos.";
+            });
+    }
+
+    function renderAgenda() {
+        ui.agendaList.innerHTML = '';
+        if (state.servicesCache.length === 0) {
+            ui.noServicesMessage.style.display = 'block';
+            return;
+        }
+        ui.noServicesMessage.style.display = 'none';
+        state.servicesCache.forEach(service => {
+            const card = document.createElement('div');
+            card.className = 'service-card';
+            const status = service.estado || 'Confirmado';
+            card.classList.add(`status-${status.replace(/\s+/g, '-')}`);
+            card.dataset.serviceId = service.id;
+            card.innerHTML = `
+                <div class="service-card-time">${service.horaInicio || 'Sin Hora'}</div>
+                <div class="service-card-details">
+                    <h3>${service.cliente || 'Cliente no especificado'}</h3>
+                    <p>${service.tipoServicio || 'Servicio General'}</p>
+                </div>`;
+            ui.agendaList.appendChild(card);
+        });
+    }
+
+    // --- LÓGICA DEL MODAL DE SERVICIO Y CÁMARA ---
+    function setupModalListeners() {
+        ui.agendaList.addEventListener('click', (e) => {
+            const card = e.target.closest('.service-card');
+            if (card) openServiceModal(card.dataset.serviceId);
+        });
+        
+        ui.modalCloseBtn.addEventListener('click', () => { ui.serviceModal.style.display = 'none'; });
+
+        ui.statusBtnGroup.addEventListener('click', async (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                const newStatus = e.target.dataset.status;
+                if(state.activeServiceId && newStatus) {
+                    try {
+                        await db.collection('servicios').doc(state.activeServiceId).update({ estado: newStatus });
+                        alert(`Estado actualizado a: ${newStatus}`);
+                    } catch(error) {
+                        alert('Error al actualizar el estado.');
+                    }
+                }
+            }
+        });
+
+        ui.photoUpload.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        ui.finalSaveBtn.addEventListener('click', saveFinalReport);
+
+        ui.openCameraBtn.addEventListener('click', openCamera);
+        ui.cameraCloseBtn.addEventListener('click', closeCamera);
+        ui.captureBtn.addEventListener('click', captureImage);
+    }
+    
+    function openServiceModal(serviceId) {
+        const service = state.servicesCache.find(s => s.id === serviceId);
+        if (!service) return;
+
+        state.activeServiceId = serviceId;
+        
+        // Reset form
+        ui.trabajoRealizado.value = service.trabajoRealizado || '';
+        ui.observaciones.value = service.observaciones || '';
+        ui.nombreClienteFirma.value = service.nombreClienteFirma || '';
+        state.filesToUpload = [];
+        ui.photoGallery.innerHTML = '';
+        ui.photoUpload.value = '';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Populate data
+        ui.modalTitle.textContent = `Req #${service.numRequerimiento}`;
+        ui.modalCliente.textContent = service.cliente || 'N/A';
+        ui.modalReq.textContent = service.numRequerimiento || 'N/A';
+        ui.modalHora.textContent = service.horaInicio ? `${service.horaInicio} - ${service.horaTermino || ''}` : 'Sin hora';
+        ui.modalDireccion.textContent = service.direccion || 'N/A';
+        ui.openMapsBtn.href = `https://maps.google.com/?q=${encodeURIComponent(service.direccion)}`;
+        
+        ui.modalEquiposList.innerHTML = '';
+        if (service.equipos && service.equipos.length > 0) {
+            const ul = document.createElement('ul');
+            service.equipos.forEach(eq => {
+                const li = document.createElement('li');
+                li.textContent = `${eq.nombre} | Marca: ${eq.marca || 'N/A'} | Modelo: ${eq.modelo || 'N/A'} | Serie: ${eq.serie || 'N/A'}`;
+                ul.appendChild(li);
+            });
+            ui.modalEquiposList.appendChild(ul);
+        } else {
+            ui.modalEquiposList.textContent = 'No hay equipos asignados.';
+        }
+
+        resizeCanvas();
+        ui.serviceModal.style.display = 'block';
+    }
+
+    async function openCamera() {
+        try {
+            const constraints = { video: { facingMode: 'environment' } };
+            state.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+            ui.cameraView.srcObject = state.cameraStream;
+            ui.cameraModal.style.display = 'flex';
+        } catch (error) {
+            console.error("Error al acceder a la cámara:", error);
+            alert("No se pudo acceder a la cámara. Asegúrate de dar los permisos necesarios.");
+        }
+    }
+
+    function closeCamera() {
+        if (state.cameraStream) {
+            state.cameraStream.getTracks().forEach(track => track.stop());
+        }
+        ui.cameraModal.style.display = 'none';
+    }
+
+    function captureImage() {
+        const hiddenCanvas = document.createElement('canvas');
+        hiddenCanvas.width = ui.cameraView.videoWidth;
+        hiddenCanvas.height = ui.cameraView.videoHeight;
+        const hiddenCtx = hiddenCanvas.getContext('2d');
+        hiddenCtx.drawImage(ui.cameraView, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+
+        hiddenCanvas.toBlob((blob) => {
+            state.filesToUpload.push(blob);
+            addPhotoPreview(blob);
+            closeCamera();
+        }, 'image/webp', 0.8);
+    }
+
+    function handleFiles(files) {
+        Array.from(files).forEach(file => {
+            state.filesToUpload.push(file);
+            addPhotoPreview(file);
+        });
+    }
+
+    function addPhotoPreview(fileOrBlob) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = document.createElement('img');
+            img.src = event.target.result;
+            img.className = 'photo-preview';
+            ui.photoGallery.appendChild(img);
+        }
+        reader.readAsDataURL(fileOrBlob);
+    }
+
+    async function saveFinalReport() {
+        if (!state.activeServiceId) return;
+
+        ui.finalSaveBtn.disabled = true;
+        ui.finalSaveBtn.textContent = 'Guardando...';
+
+        try {
+            const photoURLs = [];
+            for (const file of state.filesToUpload) {
+                const fileName = file.name ? `${Date.now()}_${file.name}` : `${Date.now()}.webp`;
+                const filePath = `servicios/${state.activeServiceId}/${fileName}`;
+                const fileSnapshot = await storage.ref(filePath).put(file);
+                const url = await fileSnapshot.ref.getDownloadURL();
+                photoURLs.push(url);
+            }
+
+            const signatureDataUrl = canvas.toDataURL('image/png');
+
+            const reportData = {
+                estado: 'Completado',
+                trabajoRealizado: ui.trabajoRealizado.value,
+                observaciones: ui.observaciones.value,
+                nombreClienteFirma: ui.nombreClienteFirma.value,
+                firmaCliente: signatureDataUrl,
+                fotosServicio: firebase.firestore.FieldValue.arrayUnion(...photoURLs),
+                fechaFinalizacion: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            await db.collection('servicios').doc(state.activeServiceId).update(reportData);
+            
+            alert('Servicio completado y reporte guardado con éxito.');
+            ui.serviceModal.style.display = 'none';
+
+        } catch (error) {
+            console.error("Error al guardar el reporte:", error);
+            alert("Ocurrió un error al guardar el reporte. Inténtelo de nuevo.");
+        } finally {
+            ui.finalSaveBtn.disabled = false;
+            ui.finalSaveBtn.textContent = 'Guardar y Completar Servicio';
+        }
+    }
+
+    // --- FUNCIONES AUXILIARES ---
+    function getYYYYMMDD(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguimiento de Requerimientos</title>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        // --- CONFIGURACIÓN DE FIREBASE ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyAHxnU2r_QdtZTjzC3LL0dYrb9wit6sc0M",
+          authDomain: "maquiform-9347f.firebaseapp.com",
+          projectId: "maquiform-9347f",
+          storageBucket: "maquiform-9347f.appspot.com",
+          messagingSenderId: "408016338170",
+          appId: "1:408016338170:web:7b10d7413cd8fb69d1dd43"
+        };
+
+        // --- INICIALIZACIÓN DE FIREBASE ---
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- ESTADO Y CACHÉ ---
+        let serviciosCache = [];
+        let unsubscribeListener = null;
+
+        // --- SELECTORES DE UI ---
+        const ui = {
+            loginView: document.getElementById('login-view'),
+            mainView: document.getElementById('main-view'),
+            loginForm: document.getElementById('login-form'),
+            emailInput: document.getElementById('email'),
+            passwordInput: document.getElementById('password'),
+            errorMessage: document.getElementById('error-message'),
+            logoutButton: document.getElementById('logout-button'),
+            welcomeMessage: document.getElementById('welcome-message'),
+            themeToggle: document.getElementById('theme-toggle'),
+            tablaServiciosBody: document.getElementById('tabla-servicios-body'),
+            // Filtros
+            searchInput: document.getElementById('search-input'),
+            vendedorFilter: document.getElementById('vendedor-filter'),
+            tecnicoFilter: document.getElementById('tecnico-filter'),
+            statusFilter: document.getElementById('status-filter'),
+            startDateFilter: document.getElementById('start-date-filter'),
+            endDateFilter: document.getElementById('end-date-filter'),
+            // Modal de Seguimiento
+            modal: document.getElementById('tracking-modal'),
+            modalCloseBtn: document.getElementById('modal-close-btn'),
+            modalReqNum: document.getElementById('modal-req-num'),
+            timelineContainer: document.getElementById('timeline-container'),
+        };
+        
+        // --- LÓGICA DE AUTENTICACIÓN ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const userName = user.email.split('@')[0];
+                ui.welcomeMessage.textContent = `Usuario: ${userName}`;
+                ui.loginView.style.display = 'none';
+                ui.mainView.style.display = 'block';
+                listenToAllServices();
+            } else {
+                if (unsubscribeListener) unsubscribeListener();
+                ui.loginView.style.display = 'flex';
+                ui.mainView.style.display = 'none';
+            }
+        });
+
+        ui.loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            signInWithEmailAndPassword(auth, ui.emailInput.value, ui.passwordInput.value)
+                .catch(err => ui.errorMessage.textContent = 'Error: Credenciales incorrectas.');
+        });
+
+        ui.logoutButton.addEventListener('click', () => signOut(auth));
+
+        // --- LÓGICA DE DATOS ---
+        function listenToAllServices() {
+            if (unsubscribeListener) unsubscribeListener();
+            const q = query(collection(db, 'servicios'), orderBy('timestamp', 'desc'));
+            unsubscribeListener = onSnapshot(q, (snapshot) => {
+                serviciosCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                populateFilters();
+                renderTable();
+            }, (error) => console.error("Error al cargar servicios:", error));
+        }
+
+        // --- LÓGICA DE FILTROS Y RENDERIZADO ---
+        function populateFilters() {
+            const vendedores = [...new Set(serviciosCache.map(s => s.vendedor).filter(Boolean))];
+            const tecnicos = [...new Set(serviciosCache.flatMap(s => s.tecnicos || []).filter(Boolean))];
+
+            populateSelect(ui.vendedorFilter, vendedores);
+            populateSelect(ui.tecnicoFilter, tecnicos);
+        }
+
+        function populateSelect(selectElement, options) {
+            const currentVal = selectElement.value;
+            selectElement.innerHTML = '<option value="Todos">Todos</option>';
+            options.sort().forEach(opt => selectElement.add(new Option(opt, opt)));
+            selectElement.value = currentVal;
+        }
+
+        function renderTable() {
+            const filters = {
+                search: ui.searchInput.value.toLowerCase().trim(),
+                vendedor: ui.vendedorFilter.value,
+                tecnico: ui.tecnicoFilter.value,
+                status: ui.statusFilter.value,
+                startDate: ui.startDateFilter.value,
+                endDate: ui.endDateFilter.value
+            };
+
+            const filteredServices = serviciosCache.filter(s => {
+                const searchMatch = !filters.search ||
+                    (s.numRequerimiento && s.numRequerimiento.includes(filters.search)) ||
+                    (s.cliente && s.cliente.toLowerCase().includes(filters.search)) ||
+                    (s.numNV && s.numNV.toLowerCase().includes(filters.search));
+
+                const vendedorMatch = filters.vendedor === 'Todos' || s.vendedor === filters.vendedor;
+                const tecnicoMatch = filters.tecnico === 'Todos' || (s.tecnicos && s.tecnicos.includes(filters.tecnico));
+                const statusMatch = filters.status === 'Todos' || s.estado === filters.status;
+                
+                const serviceDate = s.timestamp ? s.timestamp.toDate() : null;
+                const startDateMatch = !filters.startDate || (serviceDate && serviceDate >= new Date(filters.startDate + 'T00:00:00'));
+                const endDateMatch = !filters.endDate || (serviceDate && serviceDate <= new Date(filters.endDate + 'T23:59:59'));
+
+                return searchMatch && vendedorMatch && tecnicoMatch && statusMatch && startDateMatch && endDateMatch;
+            });
+            
+            ui.tablaServiciosBody.innerHTML = '';
+            if(filteredServices.length === 0) {
+                ui.tablaServiciosBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No se encontraron requerimientos con los filtros aplicados.</td></tr>`;
+                return;
+            }
+
+            filteredServices.forEach(s => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${s.numRequerimiento || 'N/A'}</td>
+                    <td>${s.cliente || 'N/A'}</td>
+                    <td>${s.vendedor ? s.vendedor.split('@')[0] : 'N/A'}</td>
+                    <td>${formatTimestamp(s.timestamp)}</td>
+                    <td>${formatDateString(s.fechaAsignada)}</td>
+                    <td>${(s.tecnicos || []).join(', ') || 'N/A'}</td>
+                    <td><span class="status status-${(s.estado || '').replace(/\s+/g, '-')}">${s.estado || 'N/A'}</span></td>
+                    <td><button class="btn-track" data-id="${s.id}">Seguimiento</button></td>
+                `;
+                ui.tablaServiciosBody.appendChild(tr);
+            });
+        }
+        
+        // --- LÓGICA DEL MODAL DE SEGUIMIENTO ---
+        function openTrackingModal(serviceId) {
+            const service = serviciosCache.find(s => s.id === serviceId);
+            if (!service) return;
+
+            ui.modalReqNum.textContent = `Seguimiento del Requerimiento #${service.numRequerimiento}`;
+            const timeline = ui.timelineContainer;
+            timeline.innerHTML = '';
+
+            // 1. Creado
+            timeline.innerHTML += createTimelineStep('Creado', `
+                <li><strong>Solicitado por:</strong> ${service.vendedor || 'N/A'}</li>
+                <li><strong>Fecha:</strong> ${formatTimestamp(service.timestamp)}</li>
+                <li><strong>Cliente:</strong> ${service.cliente}</li>
+                <li><strong>Fecha Sugerida:</strong> ${formatDateString(service.fechaProgramacion)}</li>
+            `, 'completed');
+            
+            // 2. Planificado
+            if (service.fechaAsignada && service.tecnicos) {
+                timeline.innerHTML += createTimelineStep('Planificado', `
+                    <li><strong>Fecha Asignada:</strong> ${formatDateString(service.fechaAsignada)}</li>
+                    <li><strong>Técnico(s):</strong> ${(service.tecnicos || []).join(', ')}</li>
+                    <li><strong>Observaciones Planif.:</strong> ${service.observacionesPlanificacion || 'Ninguna'}</li>
+                `, 'completed');
+            } else {
+                 timeline.innerHTML += createTimelineStep('Planificado', `<li>Esperando planificación...</li>`, 'pending');
+            }
+            
+            // 3. Completado
+            if (service.estado === 'Completado') {
+                 timeline.innerHTML += createTimelineStep('Completado', `
+                    <li><strong>Fecha de Finalización:</strong> ${formatTimestamp(service.fechaFinalizacion)}</li>
+                    <li><strong>Trabajo Realizado:</strong> <pre>${service.trabajoRealizado || 'No reportado.'}</pre></li>
+                    <li><strong>Observaciones Técnico:</strong> <pre>${service.observaciones || 'Ninguna'}</pre></li>
+                    <li><strong>Recibido por:</strong> ${service.nombreClienteFirma || 'No reportado.'}</li>
+                    <li><strong>Firma:</strong> ${service.firmaCliente ? '<img src="'+service.firmaCliente+'" alt="Firma" class="firma-img"/>' : 'No disponible'}</li>
+                    <li><strong>Fotos:</strong> <div class="photo-gallery">${(service.fotosServicio || []).map(url => `<a href="${url}" target="_blank"><img src="${url}" class="photo-thumb"/></a>`).join('') || 'No hay fotos.'}</div></li>
+                 `, 'completed');
+            } else {
+                 timeline.innerHTML += createTimelineStep('Completado', `<li>Servicio aún no finalizado.</li>`, 'pending');
+            }
+
+            ui.modal.style.display = 'flex';
+        }
+        
+        function createTimelineStep(title, content, status) {
+            return `
+                <div class="timeline-step ${status}">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <h4>${title}</h4>
+                        <ul>${content}</ul>
+                    </div>
+                </div>`;
+        }
+        
+        // --- EVENT LISTENERS ---
+        [ui.searchInput, ui.vendedorFilter, ui.tecnicoFilter, ui.statusFilter, ui.startDateFilter, ui.endDateFilter].forEach(el => {
+            el.addEventListener('input', renderTable);
+        });
+
+        ui.tablaServiciosBody.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn-track')) {
+                openTrackingModal(e.target.dataset.id);
+            }
+        });
+        ui.modalCloseBtn.addEventListener('click', () => ui.modal.style.display = 'none');
+        window.addEventListener('click', (e) => {
+            if (e.target === ui.modal) ui.modal.style.display = 'none';
+        });
+
+        // --- HELPERS ---
+        function formatTimestamp(ts) { if (!ts || !ts.toDate) return 'N/A'; return ts.toDate().toLocaleString('es-CL'); }
+        function formatDateString(dateStr) { if (!dateStr) return 'N/A'; const parts = dateStr.split('-'); return `${parts[2]}/${parts[1]}/${parts[0]}`; }
+
+        // --- THEME ---
+        function applyTheme(isDark) { document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light'); localStorage.setItem('theme', isDark ? 'dark' : 'light'); ui.themeToggle.checked = isDark; }
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        applyTheme(savedTheme === 'dark');
+        ui.themeToggle.addEventListener('change', (e) => applyTheme(e.target.checked));
+    </script>
+    <style>
+        :root {
+            --font-main: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            --transition-speed: 0.3s;
+        }
+        [data-theme="dark"] {
+            --bg-primary: #1a1b26; --bg-secondary: #24283b; --bg-tertiary: #414868;
+            --text-primary: #c0caf5; --text-secondary: #a9b1d6; --accent: #7dcfff;
+            --accent-glow: rgba(125, 207, 255, 0.2); --border-color: #3b3f51;
+            --success: #9ece6a; --pending: #e0af68; --danger: #f7768e; --in-progress: #7aa2f7;
+            --modal-bg: rgba(36, 40, 59, 0.85);
+        }
+        [data-theme="light"] {
+            --bg-primary: #f0f2f5; --bg-secondary: #ffffff; --bg-tertiary: #e9ecef;
+            --text-primary: #212529; --text-secondary: #495057; --accent: #007bff;
+            --accent-glow: rgba(0, 123, 255, 0.15); --border-color: #dee2e6;
+            --success: #28a745; --pending: #ffc107; --danger: #dc3545; --in-progress: #17a2b8;
+            --modal-bg: rgba(255, 255, 255, 0.85);
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: var(--font-main); margin: 0; background-color: var(--bg-primary); color: var(--text-primary); }
+        .container { max-width: 95%; margin: 0 auto; padding: 1rem 1.5rem; }
+        .header-controls { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background-color: var(--bg-secondary); border-radius: 12px; margin-bottom: 1.5rem; border: 1px solid var(--border-color); }
+        h1 { margin: 0; font-size: 1.5rem; color: var(--text-primary); font-weight: 600; }
+        .action-buttons { display: flex; align-items: center; gap: 1rem; }
+        .card { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        h2 { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.2rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
+        
+        #login-view { display: flex; align-items: center; justify-content: center; height: 100vh; padding: 1.5rem; }
+        .login-card { max-width: 450px; width: 100%; }
+        input, select, button { width: 100%; padding: 0.75rem; font-size: 0.95rem; border: 1px solid var(--border-color); border-radius: 8px; box-sizing: border-box; background: var(--bg-tertiary); color: var(--text-primary); }
+        button { background-color: var(--accent); color: var(--bg-secondary); font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
+        #logout-button { background: var(--danger); color: white; padding: 0.5rem 1rem; width: auto; }
+        #error-message { color: var(--danger); text-align: center; margin-top: 1rem; }
+
+        .filters-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.8rem; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+        tbody tr:hover { background-color: var(--bg-tertiary); }
+        .status { padding: 0.3em 0.7em; border-radius: 10px; font-weight: 600; font-size: 0.8rem; display: inline-block; border: 1px solid currentColor; background: transparent; }
+        .status-Pendiente { color: var(--pending); }
+        .status-Confirmado, .status-En-Progreso, .status-En-Traslado, .status-Finalizado { color: var(--in-progress); }
+        .status-Completado { color: var(--success); }
+        .btn-track { padding: 0.4rem 0.8rem; }
+        
+        .theme-switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .theme-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-tertiary); transition: var(--transition-speed); border-radius: 26px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: var(--transition-speed); border-radius: 50%; }
+        input:checked + .slider { background-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(24px); }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+        .modal-content { background-color: var(--bg-secondary); margin: auto; padding: 2rem; border: 1px solid var(--border-color); border-radius: 16px; width: 90%; max-width: 700px; position: relative; }
+        .close-btn { color: var(--text-secondary); position: absolute; top: 1rem; right: 1.5rem; font-size: 2rem; font-weight: bold; cursor: pointer; }
+        
+        /* Timeline Styles */
+        .timeline-step { display: flex; position: relative; margin-bottom: 1rem; }
+        .timeline-step:not(:last-child)::before { content: ''; position: absolute; left: 8px; top: 20px; bottom: -20px; width: 2px; background-color: var(--border-color); }
+        .timeline-dot { width: 18px; height: 18px; border-radius: 50%; background-color: var(--border-color); flex-shrink: 0; margin-right: 1rem; z-index: 1; }
+        .timeline-content h4 { margin: 0 0 0.5rem 0; color: var(--accent); }
+        .timeline-content ul { margin: 0; padding-left: 0; list-style: none; }
+        .timeline-content ul pre { white-space: pre-wrap; background-color: var(--bg-primary); padding: 0.5rem; border-radius: 6px; }
+        .timeline-step.completed .timeline-dot { background-color: var(--success); }
+        .timeline-step.pending .timeline-dot { background-color: var(--pending); }
+        .firma-img { max-width: 250px; background-color: white; border-radius: 6px; padding: 5px; }
+        .photo-gallery { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+        .photo-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; }
+
+    </style>
+</head>
+<body>
+    <div id="login-view">
+        <div class="card login-card">
+            <h2>Acceso al Portal</h2>
+            <form id="login-form">
+                <input type="email" id="email" required placeholder="Correo electrónico">
+                <input type="password" id="password" required placeholder="Contraseña" style="margin-top: 1rem;">
+                <button type="submit" style="margin-top: 1rem;">Iniciar Sesión</button>
+            </form>
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <div id="main-view" style="display: none;">
+        <div class="container">
+            <header class="header-controls">
+                <h1>Seguimiento de Requerimientos</h1>
+                <div class="action-buttons">
+                    <span id="welcome-message"></span>
+                    <button id="logout-button">Salir</button>
+                    <label class="theme-switch"><input type="checkbox" id="theme-toggle"><span class="slider"></span></label>
+                </div>
+            </header>
+
+            <div class="card">
+                <h2>Filtros</h2>
+                <div class="filters-container">
+                    <input type="search" id="search-input" placeholder="Buscar por Nº Req, Cliente...">
+                    <select id="vendedor-filter"><option value="Todos">Todos los Vendedores</option></select>
+                    <select id="tecnico-filter"><option value="Todos">Todos los Técnicos</option></select>
+                    <select id="status-filter">
+                        <option value="Todos">Todos los Estados</option>
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Confirmado">Confirmado</option>
+                        <option value="En Traslado">En Traslado</option>
+                        <option value="En Progreso">En Progreso</option>
+                        <option value="Completado">Completado</option>
+                    </select>
+                    <input type="date" id="start-date-filter" title="Fecha de inicio">
+                    <input type="date" id="end-date-filter" title="Fecha de fin">
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Resultados</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nº Req.</th>
+                                <th>Cliente</th>
+                                <th>Vendedor</th>
+                                <th>F. Creación</th>
+                                <th>F. Asignada</th>
+                                <th>Técnico(s)</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-servicios-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="tracking-modal" class="modal">
+        <div class="modal-content">
+            <span id="modal-close-btn" class="close-btn">&times;</span>
+            <h3 id="modal-req-num"></h3>
+            <div id="timeline-container"></div>
+        </div>
+    </div>
+</body>
+</html>
