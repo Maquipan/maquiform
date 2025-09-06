@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Portal del Técnico</title>
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -18,7 +17,7 @@
         [data-theme="dark"] {
             --bg-primary: #1a1b26; --bg-secondary: #24283b; --bg-tertiary: #414868;
             --text-primary: #c0caf5; --text-secondary: #a9b1d6; --accent: #7dcfff;
-            --accent-glow: rgba(125, 207, 255, 0.2); --border-color: #3b3f51;
+            --accent-glow: rgba(125, 207, 205, 0.2); --border-color: #3b3f51;
             --success: #9ece6a; --pending: #e0af68; --danger: #f7768e; 
             --in-progress: #7aa2f7; --completed: var(--success);
             --modal-bg: rgba(26, 27, 38, 0.98);
@@ -59,7 +58,6 @@
         .service-card-details p { margin: 0; color: var(--text-secondary); }
         #loading-indicator, #no-services-message { text-align: center; padding: 3rem 1rem; color: var(--text-secondary); font-size: 1.1rem; }
         
-        /* --- Modal de Servicio y Cámara --- */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-bg); z-index: 1000; overflow-y: auto; display: none; }
         .modal-container { padding: 1rem; max-width: 800px; margin: 1rem auto; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
@@ -72,7 +70,7 @@
         .detail-item span { font-size: 1rem; }
         .full-width { grid-column: 1 / -1; }
         .action-btn-group, .photo-btn-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; }
-        .action-btn-group button, .photo-btn-group button { font-weight: 600; margin-bottom: 0; }
+        .action-btn-group button, .photo-btn-group button, .button-like-label { font-weight: 600; margin-bottom: 0; }
         .status-btn.en-traslado { background: var(--pending); }
         .status-btn.en-progreso { background: var(--in-progress); }
         .status-btn.finalizar { background: var(--danger); color: var(--bg-secondary); }
@@ -197,7 +195,7 @@
       apiKey: "AIzaSyAHxnU2r_QdtZTjzC3LL0dYrb9wit6sc0M",
       authDomain: "maquiform-9347f.firebaseapp.com",
       projectId: "maquiform-9347f",
-      storageBucket: "maquiform-9347f.appspot.com", // <-- ESTA LÍNEA FUE CORREGIDA
+      storageBucket: "maquiform-9347f.appspot.com", // <-- ESTA ES LA LÍNEA CRÍTICA Y CORREGIDA
       messagingSenderId: "408016338170",
       appId: "1:408016338170:web:7b10d7413cd8fb69d1dd43"
     };
@@ -284,6 +282,7 @@
         ui.welcomeMessage.textContent = `Hola, ${userName}`;
         ui.prevDayBtn.addEventListener('click', () => changeDate(-1));
         ui.nextDayBtn.addEventListener('click', () => changeDate(1));
+        ui.todayBtn.addEventListener('click', () => { state.currentDate = new Date(); updateDateDisplay(); listenToAgenda(); });
         updateDateDisplay();
         listenToAgenda();
         setupModalListeners();
@@ -415,7 +414,7 @@
         ui.modalReq.textContent = service.numRequerimiento || 'N/A';
         ui.modalHora.textContent = service.horaInicio ? `${service.horaInicio} - ${service.horaTermino || ''}` : 'Sin hora';
         ui.modalDireccion.textContent = service.direccion || 'N/A';
-        ui.openMapsBtn.href = `https://maps.google.com/?q=${encodeURIComponent(service.direccion)}`;
+        ui.openMapsBtn.href = `https://www.google.com/maps?q=${encodeURIComponent(service.direccion)}`;
         
         ui.modalEquiposList.innerHTML = '';
         if (service.equipos && service.equipos.length > 0) {
